@@ -1,6 +1,6 @@
 use regex::Regex;
 use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
+use strum_macros::{EnumIter, EnumIs};
 
 static IDENTIFIER_RE: &str  = r"[a-zA-Z_]\w*\b";
 static CONSTANT_RE: &str    = r"[0-9]+\b";
@@ -13,7 +13,7 @@ static BRACE_OPEN_RE: &str  = r"\{";
 static BRACE_CLOSE_RE: &str = r"\}";
 static SEMICOLON_RE: &str   = r";";
 
-#[derive(EnumIter, Debug, PartialEq)]
+#[derive(EnumIter, EnumIs, Debug, strum_macros::Display, PartialEq)]
 pub enum TokenKind {
     Identifier(String),
     Constant(i64),
