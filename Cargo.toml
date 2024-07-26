@@ -1,0 +1,15 @@
+[package]
+name = "c-compiler"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rcc"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5.11", features = ["derive"] }
+regex = "1.10.5"
+strum = { version = "0.26.3", features = ["derive"] }
+strum_macros = "0.26.4"
+
