@@ -14,7 +14,7 @@ struct Cli {
     parse: bool,
 
     #[arg(short, long)]
-    code_gen: bool,
+    codegen: bool,
 }
 
 fn main() {

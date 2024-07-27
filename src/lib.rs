@@ -3,6 +3,7 @@ use std::process::Command;
 
 mod lexer;
 mod ast;
+mod codegen;
 
 fn preprocess(path: &str) -> String {
     let output_path = path.replace(".c", ".i");
@@ -22,8 +23,11 @@ pub fn compile(path: &str) {
     println!("*** preprocessed source ***");
 
     let tokens = lexer::run_lexer(source);
-    println!("\nTokens:\n{:?}\n", tokens);
+    println!("\nTokens:\n{:?}\n", &tokens);
 
     let ast = ast::Program::parse(tokens);
-    println!("Parsed AST:\n{:?}", ast);
+    println!("Parsed AST:\n{:?}\n", &ast);
+
+    let code = codegen::Program::codegen(ast);
+    println!("Codegen:\n{:?}\n", &code);
 }

@@ -19,7 +19,7 @@ fn expect_token_pop(expected: TokenKind, tokens: &mut VecDeque<TokenKind>) -> To
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct Program {
-    source: Function
+    pub body: Function
 }
 
 impl Program {
@@ -27,7 +27,7 @@ impl Program {
         let mut tokens = VecDeque::from(tokens);
 
         let program = Program {
-            source: Function::parse(&mut tokens)
+            body: Function::parse(&mut tokens)
         };
 
         if !tokens.is_empty() {
@@ -41,9 +41,9 @@ impl Program {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct Function {
-    name: String,
-    return_type: String,
-    body: Statement,
+    pub name: String,
+    pub return_type: String,
+    pub body: Statement,
 }
 
 impl Function {
