@@ -12,6 +12,16 @@ impl Program {
             body: Function::codegen(program.body),
         }
     }
+
+    pub fn emit(&self) -> String {
+        let mut result = String::new();
+
+        result.push_str(&self.body.emit());
+        result.push_str(".section .note.GNU-stack,\"\",@progbits\n");
+        result.push_str(&format!(".globl {}\n", self.body.name));
+
+        result
+    }
 }
 
 #[derive(Debug)]
@@ -27,6 +37,17 @@ impl Function {
             name: function.name,
             instructions: Instruction::codegen(function.body),
         }
+    }
+
+    pub fn emit(&self) -> String {
+        let mut result = String::new();
+
+        result.push_str(&format!("{}:\n", self.name));
+        for instr in &self.instructions {
+            result.push_str(&format!("\t{}\n", instr.emit()));
+        }
+
+        result
     }
 }
 
@@ -52,6 +73,15 @@ impl Instruction {
 
         instructions
     }
+
+    pub fn emit(&self) -> String {
+        match self {
+            Self::Ret => "ret".to_owned(),
+            Self::Mov(src, dst) => {
+                format!("movl {}, {}", src.emit(), dst.emit())
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -71,6 +101,13 @@ impl Operand {
             }
         } else {
             Self::Register
+        }
+    }
+
+    pub fn emit(&self) -> String {
+        match self {
+            Self::Register => "%eax".to_owned(),
+            Self::Immediate(val) => format!("${}", val),
         }
     }
 }

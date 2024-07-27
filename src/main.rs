@@ -20,5 +20,5 @@ struct Cli {
 fn main() {
     let cli = Cli::parse();
     println!("path is {}", cli.path);
-    compile(&cli.path);
+    compile(&cli.path, cli.lex, cli.parse, cli.codegen);
 }
