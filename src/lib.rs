@@ -20,7 +20,7 @@ fn preprocess(path: &str) -> String {
 fn codegen_emit(code: codegen::Program, name: &str) -> Result<String, Error> {
     let output_path = format!("{}.s", name);
     let asm = code.emit();
-    println!("Emitted assembly:\n\n{}\n", asm);
+    log::debug!("Emitted assembly:\n\n{}", asm);
 
     let mut file = fs::File::create(&output_path)?;
     file.write_all(asm.as_bytes())?;
@@ -45,19 +45,18 @@ pub fn compile(path: &str, lex: bool, parse: bool, tacky: bool, codegen: bool) {
     let preprocessed_path = preprocess(path);
     let source = fs::read_to_string(preprocessed_path).unwrap();
 
-    println!("*** preprocessed source ***");
-    println!("\n{}", source);
-    println!("*** preprocessed source ***");
+    log::debug!("Preprocessed source:");
+    log::debug!("\n{}", source);
 
     let tokens = lexer::run_lexer(source);
-    println!("\nTokens:\n{:?}\n", &tokens);
+    log::debug!("Tokens:\n{:?}\n", &tokens);
 
     if lex {
         return;
     }
 
     let ast = ast::Program::parse(tokens);
-    println!("Parsed AST:\n{:?}\n", &ast);
+    log::debug!("Parsed AST:\n{:?}\n", &ast);
 
     if parse {
         return;
@@ -65,14 +64,14 @@ pub fn compile(path: &str, lex: bool, parse: bool, tacky: bool, codegen: bool) {
 
     let mut ir_ctx = ir::IrCtx::new();
     let ir = ir::Program::generate(ast, &mut ir_ctx);
-    println!("Generated IR:\n{:?}\n", &ir);
+    log::debug!("Generated IR:\n{:?}\n", &ir);
 
     if tacky {
         return;
     }
 
     let code = codegen::Program::codegen(ir);
-    println!("Codegen:\n{:?}\n", &code);
+    log::debug!("Codegen:\n{:?}\n", &code);
 
     if codegen {
         return;

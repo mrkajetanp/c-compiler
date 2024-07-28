@@ -127,8 +127,12 @@ impl<'a> Lexer<'a> {
             }
 
             if !token_found {
-                println!("parsed tokens: {:?}", tokens);
-                panic!("Syntax Error: No tokens matching source \n{:?}", self.source);
+                log::debug!("Parsed tokens: {:?}", tokens);
+                log::error!("Syntax Error: Could not parse token");
+                let error_source: String = self.source.to_owned()
+                    .lines().take(2).collect::<Vec<&str>>().join("\n");
+                log::error!("At source: \n{}", error_source);
+                panic!("Syntax Error");
             }
         }
         tokens
