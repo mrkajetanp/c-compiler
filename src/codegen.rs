@@ -3,7 +3,7 @@ use strum::EnumIs;
 use crate::ir;
 use std::collections::HashMap;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 pub struct Program {
     body: Function
@@ -27,7 +27,7 @@ impl Program {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 pub struct Function {
     name: String,
@@ -83,7 +83,7 @@ impl Function {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 pub enum Instruction {
     Mov(Operand, Operand),
@@ -170,7 +170,7 @@ impl Instruction {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 pub enum UnaryOperator {
     Neg,
@@ -261,5 +261,124 @@ impl Register {
             Self::AX => format!("%eax"),
             Self::R10 => format!("%r10d"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn program() {
+        let ir_program = ir::Program {
+            body: ir::Function {
+                name: "main".to_owned(),
+                return_type: "Int".to_owned(),
+                instructions: vec![
+                    ir::Instruction::Unary(
+                        ir::UnaryOperator::Negation,
+                        ir::Val::Constant(5), ir::Val::Var("x".to_owned())
+                    ),
+                    ir::Instruction::Return(ir::Val::Var("x".to_owned()))
+                ]
+            },
+        };
+
+        let expected = Program {
+            body: Function::codegen(ir_program.body.clone())
+        };
+        let actual = Program::codegen(ir_program);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn function() {
+        let ir_function = ir::Function {
+            name: "main".to_owned(),
+            return_type: "Int".to_owned(),
+            instructions: vec![
+                ir::Instruction::Unary(
+                    ir::UnaryOperator::Negation,
+                    ir::Val::Constant(5), ir::Val::Var("x".to_owned())
+                ),
+                ir::Instruction::Return(ir::Val::Var("x".to_owned()))
+            ]
+        };
+
+        let actual = Function::codegen(ir_function);
+        let expected = Function {
+            name: "main".to_owned(),
+            instructions: vec![
+                Instruction::AllocateStack(4),
+                Instruction::Mov(Operand::Immediate(5), Operand::Stack(-4)),
+                Instruction::Unary(UnaryOperator::Neg, Operand::Stack(-4)),
+                Instruction::Mov(Operand::Stack(-4), Operand::Reg(Register::AX)),
+                Instruction::Ret
+            ],
+            stack_pos: -4,
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn instruction_unary() {
+        let mut stack_addrs: HashMap<String, i64> = HashMap::new();
+        let mut stack_pos: i64 = 0;
+
+        let actual: Vec<Instruction> = Instruction::codegen(ir::Instruction::Unary(
+                ir::UnaryOperator::Negation, ir::Val::Constant(5), ir::Val::Var("x".to_owned())
+        )).into_iter().map(
+            |instr| instr.replace_pseudo(&mut stack_pos, &mut stack_addrs)
+        ).collect();
+        let expected = vec![
+            Instruction::Mov(Operand::Immediate(5), Operand::Stack(-4)),
+            Instruction::Unary(UnaryOperator::Neg, Operand::Stack(-4))
+        ];
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn instruction_return() {
+        let actual = Instruction::codegen(
+            ir::Instruction::Return(ir::Val::Constant(5))
+        );
+        let expected = vec![
+            Instruction::Mov(Operand::Immediate(5), Operand::Reg(Register::AX)),
+            Instruction::Ret,
+        ];
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn unary() {
+        assert_eq!(UnaryOperator::Neg, UnaryOperator::codegen(ir::UnaryOperator::Negation));
+        assert_eq!(UnaryOperator::Not, UnaryOperator::codegen(ir::UnaryOperator::Complement));
+    }
+
+    #[test]
+    fn operand_from_val() {
+        assert_eq!(Operand::from_val(ir::Val::Constant(5)), Operand::Immediate(5));
+        assert_eq!(
+            Operand::from_val(ir::Val::Var("x".to_owned())), Operand::Pseudo("x".to_owned())
+        );
+    }
+
+    #[test]
+    fn operand_replace_psuedo() {
+        let mut stack_addrs: HashMap<String, i64> = HashMap::new();
+        let mut stack_pos: i64 = 0;
+        let operand = Operand::Pseudo("x".to_owned())
+            .replace_pseudo(&mut stack_pos, &mut stack_addrs);
+        let operand2 = Operand::Pseudo("x".to_owned())
+            .replace_pseudo(&mut stack_pos, &mut stack_addrs);
+        let operand3 = Operand::Pseudo("y".to_owned())
+            .replace_pseudo(&mut stack_pos, &mut stack_addrs);
+        assert_eq!(Operand::Stack(-4), operand);
+        assert_eq!(Operand::Stack(-4), operand2);
+        assert_eq!(Operand::Stack(-8), operand3);
+        assert_eq!(-8, stack_pos);
+        assert_eq!(2, stack_addrs.len());
     }
 }
