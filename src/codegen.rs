@@ -268,6 +268,121 @@ impl Register {
 mod tests {
     use super::*;
 
+    mod emit {
+        use super::*;
+
+       #[test]
+        fn program() {
+            let actual = Program {
+                body: Function {
+                    name: "main".to_owned(),
+                    instructions: vec![
+                        Instruction::AllocateStack(4),
+                        Instruction::Ret
+                    ],
+                    stack_pos: -4,
+                }
+            }.emit();
+
+            let mut expected = String::new();
+            expected.push_str("main:\n\tpushq %rbp\n\tmovq %rsp, %rbp\n");
+            expected.push_str(&Instruction::AllocateStack(4).emit());
+            expected.push_str(&Instruction::Ret.emit());
+            expected.push_str(".section .note.GNU-stack,\"\",@progbits\n");
+            expected.push_str(&format!(".globl {}\n", "main"));
+
+            assert_eq!(expected, actual);
+        }
+
+
+        #[test]
+        fn function() {
+            let actual = Function {
+                name: "main".to_owned(),
+                instructions: vec![
+                    Instruction::AllocateStack(4),
+                    Instruction::Ret
+                ],
+                stack_pos: -4,
+            }.emit();
+
+            let mut expected = String::new();
+            expected.push_str("main:\n\tpushq %rbp\n\tmovq %rsp, %rbp\n");
+            expected.push_str(&Instruction::AllocateStack(4).emit());
+            expected.push_str(&Instruction::Ret.emit());
+
+            assert_eq!(expected, actual);
+        }
+
+        #[test]
+        fn instruction_allocate_stack() {
+            let actual = Instruction::AllocateStack(4).emit();
+            let expected = "\tsubq $4, %rsp\n";
+            assert_eq!(expected, actual);
+        }
+
+        #[test]
+        fn instruction_unary() {
+            let actual = Instruction::Unary(
+                UnaryOperator::Neg, Operand::Immediate(5)
+            ).emit();
+            let expected = "\tnegl $5\n";
+            assert_eq!(expected, actual);
+        }
+
+        #[test]
+        fn instruction_ret() {
+            let actual = Instruction::Ret.emit();
+            let expected = "\tmovq %rbp, %rsp\n\tpopq %rbp\n\tret\n";
+            assert_eq!(expected, actual);
+        }
+
+        #[test]
+        fn instruction_mov() {
+            let actual = Instruction::Mov(
+                Operand::Immediate(5), Operand::Stack(-4)
+            ).emit();
+            let expected = "\tmovl $5, -4(%rbp)\n";
+            assert_eq!(expected, actual);
+        }
+
+        #[test]
+        fn unary_operator() {
+            let op = UnaryOperator::Neg;
+            assert_eq!("negl", op.emit());
+
+            let op = UnaryOperator::Not;
+            assert_eq!("notl", op.emit());
+        }
+
+        #[test]
+        fn operand() {
+            let op = Operand::Reg(Register::AX);
+            assert_eq!("%eax", op.emit());
+
+            let op = Operand::Immediate(5);
+            assert_eq!("$5", op.emit());
+
+            let op = Operand::Stack(-4);
+            assert_eq!("-4(%rbp)", op.emit());
+        }
+
+        #[test]
+        #[should_panic]
+        fn operand_panics() {
+            Operand::Pseudo("x".to_string()).emit();
+        }
+
+        #[test]
+        fn register() {
+            let reg = Register::AX;
+            assert_eq!("%eax", reg.emit());
+
+            let reg = Register::R10;
+            assert_eq!("%r10d", reg.emit());
+        }
+    }
+
     #[test]
     fn program() {
         let ir_program = ir::Program {
