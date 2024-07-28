@@ -13,7 +13,7 @@ fn expect_token(expected: TokenKind, tokens: &mut VecDeque<TokenKind>) -> TokenK
     tokens.pop_front().unwrap()
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 pub struct Program {
     pub body: Function
@@ -35,7 +35,7 @@ impl Program {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 pub struct Function {
     pub name: String,
@@ -71,7 +71,7 @@ impl Function {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 pub enum Statement {
     Return(Expression)
@@ -89,7 +89,7 @@ impl Statement {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 pub enum Expression {
     Constant(i64),
@@ -125,7 +125,7 @@ impl Expression {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 pub enum UnaryOperator {
     Complement,
@@ -143,3 +143,107 @@ impl UnaryOperator {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_program() {
+        let tokens = vec![
+            TokenKind::Int, TokenKind::Identifier("main".to_owned()),
+            TokenKind::ParenOpen, TokenKind::Void, TokenKind::ParenClose,
+            TokenKind::BraceOpen, TokenKind::Return, TokenKind::Constant(7),
+            TokenKind::Semicolon, TokenKind::BraceClose
+        ];
+
+        let function_expected = Function {
+            name: "main".to_owned(),
+            return_type: "Int".to_owned(),
+            body: Statement::Return(Expression::Constant(7))
+        };
+
+        let program_expected = Program {
+            body: function_expected
+        };
+
+        assert_eq!(Program::parse(tokens), program_expected);
+    }
+
+    #[test]
+    fn parse_function() {
+        let mut tokens = VecDeque::from([
+            TokenKind::Int, TokenKind::Identifier("main".to_owned()),
+            TokenKind::ParenOpen, TokenKind::Void, TokenKind::ParenClose,
+            TokenKind::BraceOpen, TokenKind::Return, TokenKind::Constant(6),
+            TokenKind::Semicolon, TokenKind::BraceClose
+        ]);
+
+        let function_expected = Function {
+            name: "main".to_owned(),
+            return_type: "Int".to_owned(),
+            body: Statement::Return(Expression::Constant(6))
+        };
+
+        assert_eq!(Function::parse(&mut tokens), function_expected);
+        assert!(tokens.is_empty());
+    }
+
+    #[test]
+    fn parse_statement_return() {
+        let mut tokens = VecDeque::from([
+            TokenKind::Return, TokenKind::Constant(6), TokenKind::Semicolon
+        ]);
+        assert_eq!(Statement::parse(&mut tokens), Statement::Return(Expression::Constant(6)));
+        assert!(tokens.is_empty());
+    }
+
+    #[test]
+    fn parse_expression_constant() {
+        let mut tokens = VecDeque::from([TokenKind::Constant(3)]);
+        assert_eq!(Expression::parse(&mut tokens), Expression::Constant(3));
+        assert!(tokens.is_empty());
+    }
+
+    #[test]
+    fn parse_expression_unary() {
+        let mut tokens = VecDeque::from([
+            TokenKind::Negation, TokenKind::Constant(2),
+        ]);
+
+        let expr = Expression::parse(&mut tokens);
+        let expected = Expression::Unary(
+            UnaryOperator::Negation, Box::new(Expression::Constant(2))
+        );
+        assert_eq!(expr, expected);
+        assert!(tokens.is_empty());
+    }
+
+    #[test]
+    fn parse_expression_unary_nested() {
+        let mut tokens = VecDeque::from([
+            TokenKind::Complement, TokenKind::ParenOpen, TokenKind::Negation,
+            TokenKind::Constant(4), TokenKind::ParenClose
+        ]);
+
+        let expr = Expression::parse(&mut tokens);
+        let expected = Expression::Unary(
+            UnaryOperator::Complement, Box::new(
+                Expression::Unary(UnaryOperator::Negation, Box::new(Expression::Constant(4)))
+            )
+        );
+        assert_eq!(expr, expected);
+        assert!(tokens.is_empty());
+    }
+
+    #[test]
+    fn parse_unary() {
+        let mut tokens = VecDeque::from([
+            TokenKind::Complement, TokenKind::Negation
+        ]);
+        assert_eq!(UnaryOperator::parse(&mut tokens), UnaryOperator::Complement);
+        assert_eq!(UnaryOperator::parse(&mut tokens), UnaryOperator::Negation);
+        assert!(tokens.is_empty());
+    }
+}
+
