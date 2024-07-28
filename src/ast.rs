@@ -35,7 +35,7 @@ impl Program {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub struct Function {
     pub name: String,
@@ -71,7 +71,7 @@ impl Function {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub enum Statement {
     Return(Expression)
@@ -89,7 +89,7 @@ impl Statement {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub enum Expression {
     Constant(i64),
@@ -125,7 +125,7 @@ impl Expression {
 }
 
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub enum UnaryOperator {
     Complement,
