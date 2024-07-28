@@ -4,6 +4,7 @@ use std::io::{Error, Write};
 
 mod lexer;
 mod ast;
+mod ir;
 mod codegen;
 
 fn preprocess(path: &str) -> String {
@@ -39,7 +40,7 @@ fn cleanup(name: &str) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn compile(path: &str, lex: bool, parse: bool, codegen: bool) {
+pub fn compile(path: &str, lex: bool, parse: bool, tacky: bool, codegen: bool) {
     let name = path[..path.len()-2].to_owned();
     let preprocessed_path = preprocess(path);
     let source = fs::read_to_string(preprocessed_path).unwrap();
@@ -62,7 +63,15 @@ pub fn compile(path: &str, lex: bool, parse: bool, codegen: bool) {
         return;
     }
 
-    let code = codegen::Program::codegen(ast);
+    let mut ir_ctx = ir::IrCtx::new();
+    let ir = ir::Program::generate(ast, &mut ir_ctx);
+    println!("Generated IR:\n{:?}\n", &ir);
+
+    if tacky {
+        return;
+    }
+
+    let code = codegen::Program::codegen(ir);
     println!("Codegen:\n{:?}\n", &code);
 
     if codegen {

@@ -1,0 +1,46 @@
+
+==========================
+AST Definition
+==========================
+
+program = Program(function_definition)
+function_definition = Function(identifier name, statement body)
+statement = Return(exp)
+exp = Constant(int) | Unary(unary_operator, exp)
+unary_operator = Complement | Negation
+
+==========================
+Grammar
+==========================
+
+<program> ::= <function>
+<function> ::= "int" <identifier> "(" "void" ")" "{" <statement> "}"
+<statement> ::= "return" <exp> ";"
+<exp> ::= <int> | <unop> <exp> | "(" <exp> ")"
+<unop> ::= "-" | "~"
+<identifier> ::= ? Identifier token ?
+<int> ::= ? Constant token ?
+
+==========================
+IR Grammar
+==========================
+
+program = Program(function_definition)
+function_definition = Function(identifier, instruction* body)
+instruction = Return(val) | Unary(unary_operator, val src, val dst)
+val = Constant(int) | Var(identifier)
+unary_operator = Complement | Negation
+
+==========================
+ASM Grammar
+==========================
+
+program = Program(function_definition)
+function_definition = Function(identifier, instruction* body)
+instruction = Mov(operand src, operand dst)
+    | Unary(unary_operator, operand)
+    | AllocateStack(int)
+    | Ret
+unary_operator = Neg | Not
+operand = Imm(int) | Reg(reg) | Pseudo(identifier) | Stack(int)
+reg = AX | R10

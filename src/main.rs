@@ -14,11 +14,14 @@ struct Cli {
     parse: bool,
 
     #[arg(short, long)]
+    tacky: bool,
+
+    #[arg(short, long)]
     codegen: bool,
 }
 
 fn main() {
     let cli = Cli::parse();
     println!("path is {}", cli.path);
-    compile(&cli.path, cli.lex, cli.parse, cli.codegen);
+    compile(&cli.path, cli.lex, cli.parse, cli.tacky, cli.codegen);
 }

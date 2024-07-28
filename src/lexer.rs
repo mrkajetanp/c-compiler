@@ -1,3 +1,5 @@
+use core::panic;
+
 use regex::Regex;
 use strum::IntoEnumIterator;
 use strum_macros::{EnumIter, EnumIs};
@@ -12,8 +14,11 @@ static PAREN_CLOSE_RE: &str = r"\)";
 static BRACE_OPEN_RE: &str  = r"\{";
 static BRACE_CLOSE_RE: &str = r"\}";
 static SEMICOLON_RE: &str   = r";";
+static COMPLEMENT_RE: &str  = r"~";
+static NEGATION_RE: &str    = r"-";
+static DECREMENT_RE: &str   = r"--";
 
-#[derive(EnumIter, EnumIs, Debug, strum_macros::Display, PartialEq)]
+#[derive(EnumIter, EnumIs, Debug, strum_macros::Display, PartialEq, Clone)]
 pub enum TokenKind {
     Identifier(String),
     Constant(i64),
@@ -27,45 +32,46 @@ pub enum TokenKind {
     ParenClose,
     BraceOpen,
     BraceClose,
-    Semicolon
+    Semicolon,
+
+    Complement,
+    Negation,
+    Decrement
 }
 
 impl TokenKind {
     pub fn from_str(input: &str) -> Option<TokenKind> {
         let input = input.trim();
 
-        if Regex::new(INT_RE).unwrap().is_match(input) {
-            return Some(Self::Int);
+        match input {
+            input if Regex::new(INT_RE).unwrap()
+                .is_match(input) => Some(Self::Int),
+            input if Regex::new(VOID_RE).unwrap()
+                .is_match(input) => Some(Self::Void),
+            input if Regex::new(RETURN_RE).unwrap()
+                .is_match(input) => Some(Self::Return),
+            input if Regex::new(PAREN_OPEN_RE).unwrap()
+                .is_match(input) => Some(Self::ParenOpen),
+            input if Regex::new(PAREN_CLOSE_RE).unwrap()
+                .is_match(input) => Some(Self::ParenClose),
+            input if Regex::new(BRACE_OPEN_RE).unwrap()
+                .is_match(input) => Some(Self::BraceOpen),
+            input if Regex::new(BRACE_CLOSE_RE).unwrap()
+                .is_match(input) => Some(Self::BraceClose),
+            input if Regex::new(SEMICOLON_RE).unwrap()
+                .is_match(input) => Some(Self::Semicolon),
+            input if Regex::new(DECREMENT_RE).unwrap()
+                .is_match(input) => Some(Self::Decrement),
+            input if Regex::new(COMPLEMENT_RE).unwrap()
+                .is_match(input) => Some(Self::Complement),
+            input if Regex::new(NEGATION_RE).unwrap()
+                .is_match(input) => Some(Self::Negation),
+            input if Regex::new(CONSTANT_RE).unwrap()
+                .is_match(input) => Some(Self::Constant(input.parse::<i64>().unwrap())),
+            input if Regex::new(IDENTIFIER_RE).unwrap()
+                .is_match(input) => Some(Self::Identifier(input.to_string())),
+            _ => None
         }
-        if Regex::new(VOID_RE).unwrap().is_match(input) {
-            return Some(Self::Void);
-        }
-        if Regex::new(RETURN_RE).unwrap().is_match(input) {
-            return Some(Self::Return);
-        }
-        if Regex::new(PAREN_OPEN_RE).unwrap().is_match(input) {
-            return Some(Self::ParenOpen);
-        }
-        if Regex::new(PAREN_CLOSE_RE).unwrap().is_match(input) {
-            return Some(Self::ParenClose);
-        }
-        if Regex::new(BRACE_OPEN_RE).unwrap().is_match(input) {
-            return Some(Self::BraceOpen);
-        }
-        if Regex::new(BRACE_CLOSE_RE).unwrap().is_match(input) {
-            return Some(Self::BraceClose);
-        }
-        if Regex::new(SEMICOLON_RE).unwrap().is_match(input) {
-            return Some(Self::Semicolon);
-        }
-        if Regex::new(CONSTANT_RE).unwrap().is_match(input) {
-            return Some(Self::Constant(input.parse::<i64>().unwrap()));
-        }
-        if Regex::new(IDENTIFIER_RE).unwrap().is_match(input) {
-            return Some(Self::Identifier(input.to_string()));
-        }
-
-        None
     }
 
     pub fn to_regex(&self) -> Regex {
@@ -83,6 +89,10 @@ impl TokenKind {
             Self::BraceOpen => Regex::new(BRACE_OPEN_RE).unwrap(),
             Self::BraceClose => Regex::new(BRACE_CLOSE_RE).unwrap(),
             Self::Semicolon => Regex::new(SEMICOLON_RE).unwrap(),
+
+            Self::Complement => Regex::new(COMPLEMENT_RE).unwrap(),
+            Self::Negation => Regex::new(NEGATION_RE).unwrap(),
+            Self::Decrement => Regex::new(DECREMENT_RE).unwrap(),
         }
     }
 }
@@ -118,8 +128,7 @@ impl<'a> Lexer<'a> {
 
             if !token_found {
                 println!("parsed tokens: {:?}", tokens);
-                println!("source at \n{:?}", self.source);
-                panic!("syntax error");
+                panic!("Syntax Error: No tokens matching source \n{:?}", self.source);
             }
         }
         tokens
