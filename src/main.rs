@@ -45,6 +45,19 @@ fn main() {
         LevelFilter::Info
     });
 
+    let stage = if cli.lex {
+        CompileStage::Lex
+    } else if cli.parse {
+        CompileStage::Parse
+    } else if cli.tacky {
+        CompileStage::IR
+    } else if cli.codegen {
+        CompileStage::Codegen
+    } else {
+        CompileStage::Full
+    };
+
+    let driver = Driver::new(&cli.path);
     log::info!("Building {}", cli.path);
-    compile(&cli.path, cli.lex, cli.parse, cli.tacky, cli.codegen);
+    driver.compile(stage);
 }

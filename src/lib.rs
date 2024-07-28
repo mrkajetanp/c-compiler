@@ -1,84 +1,135 @@
 use std::fs;
 use std::process::Command;
 use std::io::{Error, Write};
+use strum::EnumIs;
 
-mod lexer;
-mod ast;
-mod ir;
-mod codegen;
+pub mod lexer;
+pub mod ast;
+pub mod ir;
+pub mod codegen;
 
-fn preprocess(path: &str) -> String {
-    let output_path = path.replace(".c", ".i");
+use lexer::TokenKind;
 
-    let _ = Command::new("gcc").args([
-        "-E", "-P", path, "-o", output_path.as_str()
-    ]).status().expect("Failed to run the preprocessor");
-
-    output_path
+#[derive(PartialEq, EnumIs, Clone, Copy)]
+pub enum CompileStage {
+    Lex,
+    Parse,
+    IR,
+    Codegen,
+    Full
 }
 
-fn codegen_emit(code: codegen::Program, name: &str) -> Result<String, Error> {
-    let output_path = format!("{}.s", name);
-    let asm = code.emit();
-    log::debug!("Emitted assembly:\n\n{}", asm);
-
-    let mut file = fs::File::create(&output_path)?;
-    file.write_all(asm.as_bytes())?;
-
-    Ok(output_path)
+pub struct Driver {
+    path: String,
+    name: String,
 }
 
-fn assemble(path: &str, output_path: &str) {
-    let _ = Command::new("gcc").args([
-        path, "-o", output_path,
-    ]).status().expect("Failed to run the assembler");
-}
-
-fn cleanup(name: &str) -> Result<(), Error> {
-    fs::remove_file(format!("{}.i", name))?;
-    fs::remove_file(format!("{}.s", name))?;
-    Ok(())
-}
-
-pub fn compile(path: &str, lex: bool, parse: bool, tacky: bool, codegen: bool) {
-    let name = path[..path.len()-2].to_owned();
-    let preprocessed_path = preprocess(path);
-    let source = fs::read_to_string(preprocessed_path).unwrap();
-
-    log::debug!("Preprocessed source:");
-    log::debug!("\n{}", source);
-
-    let tokens = lexer::run_lexer(source);
-    log::debug!("Tokens:\n{:?}\n", &tokens);
-
-    if lex {
-        return;
+impl Driver {
+    pub fn new(path: &str) -> Self {
+        Self {
+            path: path.to_owned(),
+            name: path[..path.len()-2].to_owned(),
+        }
     }
 
-    let ast = ast::Program::parse(tokens);
-    log::debug!("Parsed AST:\n{:?}\n", &ast);
+    pub fn compile(&self, stage: CompileStage) {
+        let preprocessed_path = self.preprocess();
+        let source = fs::read_to_string(preprocessed_path).unwrap();
+        self.clean_preprocessed().unwrap();
 
-    if parse {
-        return;
+        log::debug!("Preprocessed source:");
+        log::debug!("\n{}", source);
+
+        let tokens = self.lex(source);
+        log::debug!("Tokens:\n{:?}\n", &tokens);
+
+        if stage.is_lex() {
+            return;
+        }
+
+        let ast = self.parse(tokens);
+        log::debug!("Parsed AST:\n{:?}\n", &ast);
+
+        if stage.is_parse() {
+            return;
+        }
+
+        let ir = self.generate_ir(ast);
+        log::debug!("Generated IR:\n{:?}\n", &ir);
+
+        if stage.is_ir() {
+            return;
+        }
+
+        let code = self.codegen(ir);
+        log::debug!("Codegen:\n{:?}\n", &code);
+
+        if stage.is_codegen() {
+            return;
+        }
+
+        let asm_path = self.emit(code).unwrap();
+        self.assemble(&asm_path);
+
+        self.clean_asm().unwrap();
     }
 
-    let mut ir_ctx = ir::IrCtx::new();
-    let ir = ir::Program::generate(ast, &mut ir_ctx);
-    log::debug!("Generated IR:\n{:?}\n", &ir);
+    pub fn preprocess(&self) -> String {
+        let output_path = self.path.replace(".c", ".i");
 
-    if tacky {
-        return;
+        let _ = Command::new("gcc").args([
+            "-E", "-P", &self.path, "-o", output_path.as_str()
+        ]).status().expect("Failed to run the preprocessor");
+
+        output_path
     }
 
-    let code = codegen::Program::codegen(ir);
-    log::debug!("Codegen:\n{:?}\n", &code);
-
-    if codegen {
-        return;
+    pub fn lex(&self, source: String) -> Vec<TokenKind> {
+        lexer::run_lexer(source)
     }
 
-    let asm_path = codegen_emit(code,&name).unwrap();
-    assemble(&asm_path, &name);
+    pub fn parse(&self, tokens: Vec<TokenKind>) -> ast::Program {
+        ast::Program::parse(tokens)
+    }
 
-    cleanup(&name).unwrap();
+    fn generate_ir(&self, ast: ast::Program) -> ir::Program {
+        let mut ir_ctx = ir::IrCtx::new();
+        ir::Program::generate(ast, &mut ir_ctx)
+    }
+
+    fn codegen(&self, ir: ir::Program) -> codegen::Program {
+        codegen::Program::codegen(ir)
+    }
+
+    fn emit(&self, code: codegen::Program) -> Result<String, Error> {
+        let output_path = format!("{}.s", self.name);
+        let asm = code.emit();
+        log::debug!("Emitted assembly:\n\n{}", asm);
+
+        let mut file = fs::File::create(&output_path)?;
+        file.write_all(asm.as_bytes())?;
+
+        Ok(output_path)
+    }
+
+    fn assemble(&self, path: &str) {
+        let _ = Command::new("gcc").args([
+            path, "-o", &self.name,
+        ]).status().expect("Failed to run the assembler");
+    }
+
+    fn clean_asm(&self) -> Result<(), Error> {
+        fs::remove_file(format!("{}.s", self.name))?;
+        Ok(())
+    }
+
+    pub fn clean_preprocessed(&self) -> Result<(), Error> {
+        fs::remove_file(format!("{}.i", self.name))?;
+        Ok(())
+    }
+
+    pub fn clean_binary(&self) -> Result<(), Error> {
+        fs::remove_file(format!("{}", self.name))?;
+        Ok(())
+    }
 }
