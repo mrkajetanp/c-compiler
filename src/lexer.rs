@@ -4,8 +4,8 @@ use regex::Regex;
 use strum::IntoEnumIterator;
 use strum_macros::{EnumIter, EnumIs};
 
-static IDENTIFIER_RE: &str  = r"[a-zA-Z_]\w*\b";
-static CONSTANT_RE: &str    = r"[0-9]+\b";
+static IDENTIFIER_RE: &str  = r"[[:alpha:]_]\w*\b";
+static CONSTANT_RE: &str    = r"[[:digit:]]+\b";
 static RETURN_RE: &str      = r"return\b";
 static INT_RE: &str         = r"int\b";
 static VOID_RE: &str        = r"void\b";
@@ -40,36 +40,46 @@ pub enum TokenKind {
 }
 
 impl TokenKind {
+    fn is_full_match(input: &str, pattern: &str) -> bool {
+        if let Some(m) = Regex::new(pattern).unwrap().find(input) {
+            m.start() == 0 && m.end() == input.len()
+        } else {
+            false
+        }
+    }
+
     pub fn from_str(input: &str) -> Option<TokenKind> {
         let input = input.trim();
 
+        log::trace!("Trying to tokenize input {:?}", input);
+
         match input {
-            input if Regex::new(INT_RE).unwrap()
-                .is_match(input) => Some(Self::Int),
-            input if Regex::new(VOID_RE).unwrap()
-                .is_match(input) => Some(Self::Void),
-            input if Regex::new(RETURN_RE).unwrap()
-                .is_match(input) => Some(Self::Return),
-            input if Regex::new(PAREN_OPEN_RE).unwrap()
-                .is_match(input) => Some(Self::ParenOpen),
-            input if Regex::new(PAREN_CLOSE_RE).unwrap()
-                .is_match(input) => Some(Self::ParenClose),
-            input if Regex::new(BRACE_OPEN_RE).unwrap()
-                .is_match(input) => Some(Self::BraceOpen),
-            input if Regex::new(BRACE_CLOSE_RE).unwrap()
-                .is_match(input) => Some(Self::BraceClose),
-            input if Regex::new(SEMICOLON_RE).unwrap()
-                .is_match(input) => Some(Self::Semicolon),
-            input if Regex::new(DECREMENT_RE).unwrap()
-                .is_match(input) => Some(Self::Decrement),
-            input if Regex::new(COMPLEMENT_RE).unwrap()
-                .is_match(input) => Some(Self::Complement),
-            input if Regex::new(NEGATION_RE).unwrap()
-                .is_match(input) => Some(Self::Negation),
-            input if Regex::new(CONSTANT_RE).unwrap()
-                .is_match(input) => Some(Self::Constant(input.parse::<i64>().unwrap())),
-            input if Regex::new(IDENTIFIER_RE).unwrap()
-                .is_match(input) => Some(Self::Identifier(input.to_string())),
+            input if TokenKind::is_full_match(input, INT_RE) =>
+                Some(Self::Int),
+            input if TokenKind::is_full_match(input, VOID_RE) =>
+                Some(Self::Void),
+            input if TokenKind::is_full_match(input, RETURN_RE) =>
+                Some(Self::Return),
+            input if TokenKind::is_full_match(input, PAREN_CLOSE_RE) =>
+                Some(Self::ParenClose),
+            input if TokenKind::is_full_match(input, PAREN_OPEN_RE) =>
+                Some(Self::ParenOpen),
+            input if TokenKind::is_full_match(input, BRACE_OPEN_RE) =>
+                Some(Self::BraceOpen),
+            input if TokenKind::is_full_match(input, BRACE_CLOSE_RE) =>
+                Some(Self::BraceClose),
+            input if TokenKind::is_full_match(input, SEMICOLON_RE) =>
+                Some(Self::Semicolon),
+            input if TokenKind::is_full_match(input, DECREMENT_RE) =>
+                Some(Self::Decrement),
+            input if TokenKind::is_full_match(input, COMPLEMENT_RE) =>
+                Some(Self::Complement),
+            input if TokenKind::is_full_match(input, NEGATION_RE) =>
+                Some(Self::Negation),
+            input if TokenKind::is_full_match(input, CONSTANT_RE) =>
+                Some(Self::Constant(input.parse::<i64>().unwrap())),
+            input if TokenKind::is_full_match(input, IDENTIFIER_RE) =>
+                Some(Self::Identifier(input.to_string())),
             _ => None
         }
     }
@@ -142,4 +152,74 @@ impl<'a> Lexer<'a> {
 pub fn run_lexer(source: String) -> Vec<TokenKind> {
     let mut lexer = Lexer::new(&source.trim());
     lexer.tokenize()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tokenize_identifier() {
+        assert_eq!(TokenKind::from_str("test"), Some(TokenKind::Identifier("test".to_owned())));
+        assert_eq!(TokenKind::from_str("main"), Some(TokenKind::Identifier("main".to_owned())));
+        assert_eq!(TokenKind::from_str("ma_n"), Some(TokenKind::Identifier("ma_n".to_owned())));
+        assert_eq!(TokenKind::from_str("53main"), None);
+        assert_eq!(TokenKind::from_str("ma.in"), None);
+    }
+
+    #[test]
+    fn tokenize_constant() {
+        assert_eq!(TokenKind::from_str("66"), Some(TokenKind::Constant(66)));
+        assert_eq!(TokenKind::from_str("32"), Some(TokenKind::Constant(32)));
+    }
+
+    #[test]
+    fn tokenize_void() {
+        assert_eq!(TokenKind::from_str("void").unwrap(), TokenKind::Void);
+    }
+
+    #[test]
+    fn tokenize_return() {
+        assert_eq!(TokenKind::from_str("return").unwrap(), TokenKind::Return);
+    }
+
+    #[test]
+    fn tokenize_decrement() {
+        assert_eq!(TokenKind::from_str("--").unwrap(), TokenKind::Decrement);
+    }
+
+    #[test]
+    fn tokenize_negation() {
+        assert_eq!(TokenKind::from_str("-").unwrap(), TokenKind::Negation);
+    }
+
+    #[test]
+    fn tokenize_complement() {
+        assert_eq!(TokenKind::from_str("~").unwrap(), TokenKind::Complement);
+    }
+
+    #[test]
+    fn tokenize_semicolon() {
+        assert_eq!(TokenKind::from_str(";").unwrap(), TokenKind::Semicolon);
+    }
+
+    #[test]
+    fn tokenize_brace_close() {
+        assert_eq!(TokenKind::from_str("}").unwrap(), TokenKind::BraceClose);
+    }
+
+    #[test]
+    fn tokenize_brace_open() {
+        assert_eq!(TokenKind::from_str("{").unwrap(), TokenKind::BraceOpen);
+    }
+
+   #[test]
+    fn tokenize_paren_close() {
+        assert_eq!(TokenKind::from_str(")").unwrap(), TokenKind::ParenClose);
+    }
+
+    #[test]
+    fn tokenize_paren_open() {
+        assert_eq!(TokenKind::from_str("(").unwrap(), TokenKind::ParenOpen);
+    }
 }
