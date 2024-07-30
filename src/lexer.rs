@@ -15,28 +15,32 @@ static BRACE_OPEN_RE: &str  = r"\{";
 static BRACE_CLOSE_RE: &str = r"\}";
 static SEMICOLON_RE: &str   = r";";
 static COMPLEMENT_RE: &str  = r"~";
-static NEGATION_RE: &str    = r"-";
 static DECREMENT_RE: &str   = r"--";
+static MINUS_RE: &str       = r"-";
+static PLUS_RE: &str        = r"\+";
+static ASTERISK_RE: &str    = r"\*";
+static SLASH_RE: &str       = r"/";
+static PERCENT_RE: &str     = r"%";
 
 #[derive(EnumIter, EnumIs, Debug, strum_macros::Display, PartialEq, Clone)]
 pub enum TokenKind {
     Identifier(String),
     Constant(i64),
-
     Return,
-
     Int,
     Void,
-
     ParenOpen,
     ParenClose,
     BraceOpen,
     BraceClose,
     Semicolon,
-
     Complement,
-    Negation,
-    Decrement
+    Decrement,
+    Minus,
+    Plus,
+    Asterisk,
+    Slash,
+    Percent
 }
 
 impl TokenKind {
@@ -74,8 +78,16 @@ impl TokenKind {
                 Some(Self::Decrement),
             input if TokenKind::is_full_match(input, COMPLEMENT_RE) =>
                 Some(Self::Complement),
-            input if TokenKind::is_full_match(input, NEGATION_RE) =>
-                Some(Self::Negation),
+            input if TokenKind::is_full_match(input, MINUS_RE) =>
+                Some(Self::Minus),
+            input if TokenKind::is_full_match(input, PLUS_RE) =>
+                Some(Self::Plus),
+            input if TokenKind::is_full_match(input, ASTERISK_RE) =>
+                Some(Self::Asterisk),
+            input if TokenKind::is_full_match(input, SLASH_RE) =>
+                Some(Self::Slash),
+            input if TokenKind::is_full_match(input, PERCENT_RE) =>
+                Some(Self::Percent),
             input if TokenKind::is_full_match(input, CONSTANT_RE) =>
                 Some(Self::Constant(input.parse::<i64>().unwrap())),
             input if TokenKind::is_full_match(input, IDENTIFIER_RE) =>
@@ -88,21 +100,43 @@ impl TokenKind {
         match self {
             Self::Identifier(_) => Regex::new(IDENTIFIER_RE).unwrap(),
             Self::Constant(_) => Regex::new(CONSTANT_RE).unwrap(),
-
             Self::Return => Regex::new(RETURN_RE).unwrap(),
-
             Self::Int => Regex::new(INT_RE).unwrap(),
             Self::Void => Regex::new(VOID_RE).unwrap(),
-
             Self::ParenOpen => Regex::new(PAREN_OPEN_RE).unwrap(),
             Self::ParenClose => Regex::new(PAREN_CLOSE_RE).unwrap(),
             Self::BraceOpen => Regex::new(BRACE_OPEN_RE).unwrap(),
             Self::BraceClose => Regex::new(BRACE_CLOSE_RE).unwrap(),
             Self::Semicolon => Regex::new(SEMICOLON_RE).unwrap(),
-
             Self::Complement => Regex::new(COMPLEMENT_RE).unwrap(),
-            Self::Negation => Regex::new(NEGATION_RE).unwrap(),
             Self::Decrement => Regex::new(DECREMENT_RE).unwrap(),
+            Self::Minus => Regex::new(MINUS_RE).unwrap(),
+            Self::Plus => Regex::new(PLUS_RE).unwrap(),
+            Self::Asterisk => Regex::new(ASTERISK_RE).unwrap(),
+            Self::Slash => Regex::new(SLASH_RE).unwrap(),
+            Self::Percent => Regex::new(PERCENT_RE).unwrap(),
+        }
+    }
+
+    pub fn precedence(&self) -> u32 {
+        match self {
+            &TokenKind::Asterisk |
+            &TokenKind::Slash |
+            &TokenKind::Percent => 10,
+            &TokenKind::Plus |
+            &TokenKind::Minus => 5,
+            _ => panic!("Token {:?} does not support precedence.", self),
+        }
+    }
+
+    pub fn is_binary_operator(&self) -> bool {
+        match self {
+            &TokenKind::Asterisk |
+            &TokenKind::Slash |
+            &TokenKind::Percent |
+            &TokenKind::Plus |
+            &TokenKind::Minus => true,
+            _ => false,
         }
     }
 }
@@ -189,11 +223,6 @@ mod tests {
     }
 
     #[test]
-    fn tokenize_negation() {
-        assert_eq!(TokenKind::from_str("-").unwrap(), TokenKind::Negation);
-    }
-
-    #[test]
     fn tokenize_complement() {
         assert_eq!(TokenKind::from_str("~").unwrap(), TokenKind::Complement);
     }
@@ -221,5 +250,30 @@ mod tests {
     #[test]
     fn tokenize_paren_open() {
         assert_eq!(TokenKind::from_str("(").unwrap(), TokenKind::ParenOpen);
+    }
+
+    #[test]
+    fn tokenize_minus() {
+        assert_eq!(TokenKind::from_str("-").unwrap(), TokenKind::Minus);
+    }
+
+    #[test]
+    fn tokenize_plus() {
+        assert_eq!(TokenKind::from_str("+").unwrap(), TokenKind::Plus);
+    }
+
+    #[test]
+    fn tokenize_asterisk() {
+        assert_eq!(TokenKind::from_str("*").unwrap(), TokenKind::Asterisk);
+    }
+
+    #[test]
+    fn tokenize_slash() {
+        assert_eq!(TokenKind::from_str("/").unwrap(), TokenKind::Slash);
+    }
+
+    #[test]
+    fn tokenize_percent() {
+        assert_eq!(TokenKind::from_str("%").unwrap(), TokenKind::Percent);
     }
 }

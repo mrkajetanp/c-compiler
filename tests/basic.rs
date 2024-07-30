@@ -66,7 +66,7 @@ fn test_unary_lex() {
         TokenKind::Int, TokenKind::Identifier("main".to_owned()),
         TokenKind::ParenOpen, TokenKind::Void, TokenKind::ParenClose,
         TokenKind::BraceOpen, TokenKind::Return, TokenKind::Complement,
-        TokenKind::ParenOpen, TokenKind::Negation, TokenKind::Constant(2),
+        TokenKind::ParenOpen, TokenKind::Minus, TokenKind::Constant(2),
         TokenKind::ParenClose, TokenKind::Semicolon, TokenKind::BraceClose
     ];
 

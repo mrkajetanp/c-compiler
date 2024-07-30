@@ -2,6 +2,7 @@ use std::fs;
 use std::process::Command;
 use std::io::{Error, Write};
 use strum::EnumIs;
+use display_tree::format_tree;
 
 pub mod lexer;
 pub mod ast;
@@ -48,21 +49,21 @@ impl Driver {
         }
 
         let ast = self.parse(tokens);
-        log::debug!("Parsed AST:\n{:?}\n", &ast);
+        log::debug!("Parsed AST:\n{}\n", format_tree!(ast));
 
         if stage.is_parse() {
             return;
         }
 
         let ir = self.generate_ir(ast);
-        log::debug!("Generated IR:\n{:?}\n", &ir);
+        log::debug!("Generated IR:\n{}\n", &ir);
 
         if stage.is_ir() {
             return;
         }
 
         let code = self.codegen(ir);
-        log::debug!("Codegen:\n{:?}\n", &code);
+        log::debug!("Codegen:\n{}\n", &code);
 
         if stage.is_codegen() {
             return;

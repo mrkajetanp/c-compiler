@@ -1,6 +1,7 @@
 use strum::EnumIs;
 
 use crate::ir;
+use std::fmt;
 use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
@@ -24,6 +25,13 @@ impl Program {
         result.push_str(&format!(".globl {}\n", self.body.name));
 
         result
+    }
+}
+
+impl fmt::Display for Program {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Program:\n").unwrap();
+        write!(f, "{}", self.body)
     }
 }
 
@@ -83,11 +91,24 @@ impl Function {
     }
 }
 
+impl fmt::Display for Function {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}: # ({})\n", self.name, self.stack_pos).unwrap();
+        for instr in &self.instructions {
+            write!(f, "\t{}\n", instr).unwrap();
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 pub enum Instruction {
     Mov(Operand, Operand),
     Unary(UnaryOperator, Operand),
+    Binary(BinaryOperator, Operand, Operand),
+    Idiv(Operand),
+    Cdq,
     AllocateStack(i64),
     Ret,
 }
@@ -112,6 +133,34 @@ impl Instruction {
                     Self::Unary(UnaryOperator::codegen(op), dst.clone())
                 );
             }
+
+            ir::Instruction::Binary(op, src1, src2, dst)
+                if op.is_add() || op.is_subtract() || op.is_multiply() => {
+                    let src1 = Operand::from_val(src1);
+                    let src2 = Operand::from_val(src2);
+                    let dst = Operand::from_val(dst);
+                    instructions.push(Self::Mov(src1, dst.clone()));
+                    instructions.push(
+                        Self::Binary(BinaryOperator::codegen(op), src2, dst)
+                    );
+                }
+
+            ir::Instruction::Binary(op, src1, src2, dst)
+                if op.is_divide() || op.is_remainder() => {
+                    let src1 = Operand::from_val(src1);
+                    let src2 = Operand::from_val(src2);
+                    let dst = Operand::from_val(dst);
+                    instructions.push(Self::Mov(src1, Operand::Reg(Register::AX)));
+                    instructions.push(Self::Cdq);
+                    instructions.push(Self::Idiv(src2));
+                    let result_register = if op.is_divide() {
+                        Register::AX
+                    } else {
+                        Register::DX
+                    };
+                    instructions.push(Self::Mov(Operand::Reg(result_register), dst));
+                }
+            _ => panic!("Unexpected IR instruction in codegen"),
         }
 
         instructions
@@ -131,24 +180,49 @@ impl Instruction {
                     let dst = dst.replace_pseudo(stack_pos, stack_addrs);
                     Instruction::Unary(op, dst)
                 }
-                Instruction::Ret | Instruction::AllocateStack(_) => self,
+                Instruction::Binary(op, src, dst) => {
+                    let src = src.replace_pseudo(stack_pos, stack_addrs);
+                    let dst = dst.replace_pseudo(stack_pos, stack_addrs);
+                    Instruction::Binary(op, src, dst)
+                }
+                Instruction::Idiv(src) => {
+                    let src = src.replace_pseudo(stack_pos, stack_addrs);
+                    Instruction::Idiv(src)
+                }
+                Instruction::Ret
+                    | Instruction::Cdq
+                    | Instruction::AllocateStack(_) => self,
             }
     }
 
     pub fn fixup(self) -> Vec<Instruction> {
         match self {
             Instruction::Mov(src, dst)
-                if src.is_stack() && dst.is_stack() => {
-                    vec![
+                if src.is_stack() && dst.is_stack() => vec![
                         Instruction::Mov(src, Operand::Reg(Register::R10)),
                         Instruction::Mov(Operand::Reg(Register::R10), dst),
-                    ]
-                },
+                ],
+            Instruction::Binary(op, src, dst)
+                if (op.is_add() || op.is_sub()) && src.is_stack() && dst.is_stack() => vec![
+                        Instruction::Mov(src, Operand::Reg(Register::R10)),
+                        Instruction::Binary(op, Operand::Reg(Register::R10), dst),
+                ],
+            Instruction::Binary(op, src, dst)
+                if op.is_mult() && dst.is_stack() => vec![
+                        Instruction::Mov(dst.clone(), Operand::Reg(Register::R11)),
+                        Instruction::Binary(op, src, Operand::Reg(Register::R11)),
+                        Instruction::Mov(Operand::Reg(Register::R11), dst),
+                ],
+            Instruction::Idiv(src) if src.is_immediate() => vec![
+                Instruction::Mov(src, Operand::Reg(Register::R10)),
+                Instruction::Idiv(Operand::Reg(Register::R10))
+            ],
             _ => vec![self],
         }
     }
 
     pub fn emit(&self) -> String {
+        // TODO: indent and newline outside of the match
         match self {
             Self::Ret => {
                 let mut result = String::new();
@@ -157,16 +231,72 @@ impl Instruction {
                 result.push_str(&format!("\t{}\n", "ret"));
                 result
             },
-            Self::Mov(src, dst) => {
-                format!("\tmovl {}, {}\n", src.emit(), dst.emit())
-            },
-            Self::Unary(operator, operand) => {
-                format!("\t{} {}\n", operator.emit(), operand.emit())
-            }
-            Self::AllocateStack(val) => {
-                format!("\tsubq ${}, %rsp\n", val)
-            }
+            Self::Mov(src, dst) =>
+                format!("\tmovl {}, {}\n", src.emit(), dst.emit()),
+            Self::Unary(operator, operand) =>
+                format!("\t{} {}\n", operator.emit(), operand.emit()),
+            Self::Binary(operator, op1, op2) =>
+                format!("\t{} {}, {}\n", operator.emit(), op1.emit(), op2.emit()),
+            Self::Idiv(operand) => format!("\tidivl {}\n", operand.emit()),
+            Self::Cdq => format!("\tcdq\n"),
+            Self::AllocateStack(val) => format!("\tsubq ${}, %rsp\n", val),
         }
+    }
+}
+
+impl fmt::Display for Instruction {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let result = match self {
+            Self::Ret => format!("<epilogue>"),
+            Self::Mov(src, dst) => format!("mov {}, {}", src, dst),
+            Self::Unary(operator, operand) =>
+                format!("{} {}", operator, operand),
+            Self::Binary(operator, op1, op2) =>
+                format!("{} {}, {}", operator, op1, op2),
+            Self::Idiv(operand) => format!("div {}", operand),
+            Self::Cdq => format!("cdq"),
+            Self::AllocateStack(val) => format!("<prologue stack -{}>", val)
+        };
+
+        write!(f, "{}", result)
+    }
+}
+
+#[derive(Debug, PartialEq, EnumIs)]
+#[allow(dead_code)]
+pub enum BinaryOperator {
+    Add,
+    Sub,
+    Mult
+}
+
+impl BinaryOperator {
+    pub fn codegen(operator: ir::BinaryOperator) -> Self {
+        match operator {
+            ir::BinaryOperator::Add => Self::Add,
+            ir::BinaryOperator::Subtract => Self::Sub,
+            ir::BinaryOperator::Multiply => Self::Mult,
+            _ => panic!("Unsupported binary operator")
+        }
+    }
+
+    pub fn emit(&self) -> String {
+        match self {
+            &BinaryOperator::Add => "addl",
+            &BinaryOperator::Sub => "subl",
+            &BinaryOperator::Mult => "imull",
+        }.to_owned()
+    }
+}
+
+impl fmt::Display for BinaryOperator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let result = match self {
+            &BinaryOperator::Add => "add",
+            &BinaryOperator::Sub => "sub",
+            &BinaryOperator::Mult => "mul",
+        };
+        write!(f, "{}", result)
     }
 }
 
@@ -187,12 +317,21 @@ impl UnaryOperator {
 
     pub fn emit(&self) -> String {
         match self {
-            Self::Neg => format!("negl"),
-            Self::Not => format!("notl"),
-        }
+            Self::Neg => "negl",
+            Self::Not => "notl",
+        }.to_owned()
     }
 }
 
+impl fmt::Display for UnaryOperator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let result = match self {
+            &UnaryOperator::Neg => "neg",
+            &UnaryOperator::Not => "not",
+        };
+        write!(f, "{}", result)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, EnumIs)]
 #[allow(dead_code)]
@@ -248,19 +387,47 @@ impl Operand {
     }
 }
 
+impl fmt::Display for Operand {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let result = match self {
+            Self::Reg(reg) => format!("{}", reg),
+            Self::Immediate(val) => format!("{}", val),
+            Self::Stack(val) => format!("{}(stack)", val),
+            Self::Pseudo(name) => format!("<{}>", name)
+        };
+        write!(f, "{}", result)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, EnumIs)]
 #[allow(dead_code)]
 pub enum Register {
     AX,
-    R10
+    DX,
+    R10,
+    R11,
 }
 
 impl Register {
     pub fn emit(&self) -> String {
         match self {
             Self::AX => format!("%eax"),
+            Self::DX => format!("%edx"),
             Self::R10 => format!("%r10d"),
+            Self::R11 => format!("%r11d"),
         }
+    }
+}
+
+impl fmt::Display for Register {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let result = match self {
+            &Register::AX => "ax",
+            &Register::DX => "dx",
+            &Register::R10 => "r10",
+            &Register::R11 => "r11",
+        };
+        write!(f, "{}", result)
     }
 }
 

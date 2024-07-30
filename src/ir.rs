@@ -1,3 +1,7 @@
+use std::fmt;
+
+use strum::EnumIs;
+
 use crate::ast::{self, Statement};
 
 #[derive(Debug)]
@@ -35,6 +39,12 @@ impl Program {
     }
 }
 
+impl fmt::Display for Program {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Program:\n").unwrap();
+        write!(f, "{}", self.body)
+    }
+}
 
 #[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
@@ -42,6 +52,16 @@ pub struct Function {
     pub name: String,
     pub return_type: String,
     pub instructions: Vec<Instruction>,
+}
+
+impl fmt::Display for Function {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} -> {}:\n", self.name, self.return_type).unwrap();
+        for instr in &self.instructions {
+            write!(f, "\t{}\n", instr).unwrap();
+        }
+        Ok(())
+    }
 }
 
 impl Function {
@@ -58,7 +78,8 @@ impl Function {
 #[allow(dead_code)]
 pub enum Instruction {
     Return(Val),
-    Unary(UnaryOperator, Val, Val)
+    Unary(UnaryOperator, Val, Val),
+    Binary(BinaryOperator, Val, Val, Val)
 }
 
 impl Instruction {
@@ -77,6 +98,19 @@ impl Instruction {
         let mut instructions = vec![];
         let result = Val::generate(expr, &mut instructions, ctx);
         (instructions, result)
+    }
+}
+
+impl fmt::Display for Instruction {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let result = match self {
+            Instruction::Return(val) => format!("return {}", val),
+            Instruction::Unary(op, src, dst) =>
+                format!("{} = {}{}", dst, src, op),
+            Instruction::Binary(op, src1, src2, dst) =>
+                format!("{} = {} {} {}", dst, src1, op, src2)
+        };
+        write!(f, "{}", result)
     }
 }
 
@@ -100,7 +134,62 @@ impl Val {
                 instructions.push(Instruction::Unary(ir_operator, src, dst.clone()));
                 dst
             }
+            ast::Expression::Binary(
+                op, exp1, exp2
+            ) => {
+                let v1 = Val::generate(*exp1, instructions, ctx);
+                let v2 = Val::generate(*exp2, instructions, ctx);
+                let dst = Self::Var(ctx.temp_var());
+                let ir_operator = BinaryOperator::generate(op);
+                instructions.push(Instruction::Binary(ir_operator, v1, v2, dst.clone()));
+                dst
+            }
         }
+    }
+}
+
+impl fmt::Display for Val {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let result = match self {
+            Val::Constant(val) => format!("{}", val),
+            Val::Var(name) => format!("{}", name)
+        };
+        write!(f, "{}", result)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, EnumIs)]
+#[allow(dead_code)]
+pub enum BinaryOperator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Remainder
+}
+
+impl BinaryOperator {
+    pub fn generate(operator: ast::BinaryOperator) -> BinaryOperator {
+        match operator {
+            ast::BinaryOperator::Add => Self::Add,
+            ast::BinaryOperator::Subtract => Self::Subtract,
+            ast::BinaryOperator::Multiply => Self::Multiply,
+            ast::BinaryOperator::Divide => Self::Divide,
+            ast::BinaryOperator::Remainder => Self::Remainder,
+        }
+    }
+}
+
+impl fmt::Display for BinaryOperator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let result = match self {
+            &BinaryOperator::Add => "+",
+            &BinaryOperator::Subtract => "-",
+            &BinaryOperator::Multiply => "*",
+            &BinaryOperator::Divide => "/",
+            &BinaryOperator::Remainder => "%",
+        };
+        write!(f, "{}", result)
     }
 }
 
@@ -117,6 +206,16 @@ impl UnaryOperator {
             ast::UnaryOperator::Complement => Self::Complement,
             ast::UnaryOperator::Negation => Self::Negation
         }
+    }
+}
+
+impl fmt::Display for UnaryOperator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let result = match self {
+            &UnaryOperator::Complement => "~",
+            &UnaryOperator::Negation => "-",
+        };
+        write!(f, "{}", result)
     }
 }
 
