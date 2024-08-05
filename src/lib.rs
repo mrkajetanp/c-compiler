@@ -7,6 +7,7 @@ use display_tree::format_tree;
 pub mod lexer;
 pub mod ast;
 pub mod ir;
+pub mod llvm_ir;
 pub mod codegen;
 
 use lexer::TokenKind;
@@ -33,7 +34,7 @@ impl Driver {
         }
     }
 
-    pub fn compile(&self, stage: CompileStage) {
+    pub fn compile(&self, stage: CompileStage, llvm: bool) {
         let preprocessed_path = self.preprocess();
         let source = fs::read_to_string(preprocessed_path).unwrap();
         self.clean_preprocessed().unwrap();
@@ -55,23 +56,41 @@ impl Driver {
             return;
         }
 
-        let ir = self.generate_ir(ast);
-        log::debug!("Generated IR:\n{}\n", &ir);
+        let asm_path = if llvm {
+            let ir = self.generate_llvm_ir(ast);
+            log::debug!("Generated LLVM IR:\n{}\n", &ir);
 
-        if stage.is_ir() {
-            return;
-        }
+            if stage.is_ir() {
+                return;
+            }
 
-        let code = self.codegen(ir);
-        log::debug!("Codegen:\n{}\n", &code);
+            let llvm_ir_path = self.emit_llvm(&ir).unwrap();
 
-        if stage.is_codegen() {
-            return;
-        }
+            let path = self.llvm_asm(&llvm_ir_path);
+            let asm = fs::read_to_string(&path).unwrap();
+            log::debug!("Emitted assembly:\n\n{}", asm);
 
-        let asm_path = self.emit(code).unwrap();
+            self.clean_llvm().unwrap();
+            path
+        } else {
+            let ir = self.generate_ir(ast);
+            log::debug!("Generated IR:\n{}\n", &ir);
+
+            if stage.is_ir() {
+                return;
+            }
+
+            let code = self.codegen(ir);
+            log::debug!("Codegen:\n{}\n", &code);
+
+            if stage.is_codegen() {
+                return;
+            }
+
+            self.emit(code).unwrap()
+        };
+
         self.assemble(&asm_path);
-
         self.clean_asm().unwrap();
     }
 
@@ -98,6 +117,10 @@ impl Driver {
         ir::Program::generate(ast, &mut ir_ctx)
     }
 
+    fn generate_llvm_ir(&self, ast: ast::Program) -> String {
+        ast.to_llvm(&self.name)
+    }
+
     fn codegen(&self, ir: ir::Program) -> codegen::Program {
         codegen::Program::codegen(ir)
     }
@@ -113,10 +136,30 @@ impl Driver {
         Ok(output_path)
     }
 
+    fn emit_llvm(&self, llvm_ir: &str) -> Result<String, Error> {
+        let output_path = format!("{}.ll", self.name);
+        let mut file = fs::File::create(&output_path)?;
+        file.write_all(llvm_ir.as_bytes())?;
+        Ok(output_path)
+    }
+
+    fn llvm_asm(&self, path: &str) -> String {
+        let output_path = format!("{}.s", self.name);
+        let _ = Command::new("llc").args([
+            path, "-o", &output_path
+        ]).status().expect("Failed to run llc");
+        output_path
+    }
+
     fn assemble(&self, path: &str) {
         let _ = Command::new("gcc").args([
             path, "-o", &self.name,
         ]).status().expect("Failed to run the assembler");
+    }
+
+    fn clean_llvm(&self) -> Result<(), Error> {
+        fs::remove_file(format!("{}.ll", self.name))?;
+        Ok(())
     }
 
     fn clean_asm(&self) -> Result<(), Error> {

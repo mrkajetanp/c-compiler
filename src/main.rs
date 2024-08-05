@@ -18,6 +18,12 @@ struct Cli {
     tacky: bool,
 
     #[arg(short, long)]
+    ir: bool,
+
+    #[arg(long)]
+    llvm: bool,
+
+    #[arg(short, long)]
     codegen: bool,
 
     #[arg(short, long)]
@@ -49,7 +55,7 @@ fn main() {
         CompileStage::Lex
     } else if cli.parse {
         CompileStage::Parse
-    } else if cli.tacky {
+    } else if cli.tacky || cli.ir {
         CompileStage::IR
     } else if cli.codegen {
         CompileStage::Codegen
@@ -59,5 +65,5 @@ fn main() {
 
     let driver = Driver::new(&cli.path);
     log::info!("Building {}", cli.path);
-    driver.compile(stage);
+    driver.compile(stage, cli.llvm);
 }
