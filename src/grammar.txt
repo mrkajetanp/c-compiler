@@ -6,8 +6,9 @@ program = Program(function_definition)
 function_definition = Function(identifier name, statement body)
 statement = Return(exp)
 exp = Constant(int) | Unary(unary_operator, exp) | Binary(binary_operator, exp, exp)
-unary_operator = Complement | Negation
-binary_operator = Add | Subtract | Multiply | Divide | Remainder
+unary_operator = Complement | Negation | Not
+binary_operator = Add | Subtract | Multiply | Divide | Remainder | And | Or
+	| Equal | NotEqual | LessThan | LessEqualThan | GreaterThan | GreaterEqualThan
 
 ==========================
 Grammar
@@ -18,8 +19,9 @@ Grammar
 <statement> ::= "return" <exp> ";"
 <exp> ::= <factor> | <exp> <binop> <exp>
 <factor> ::= <int> | <unop> <exp> | "(" <exp> ")"
-<unop> ::= "-" | "~"
-<binop> ::= "-" | "+" | "*" | "/" | "%"
+<unop> ::= "-" | "~" | "!"
+<binop> ::= "-" | "+" | "*" | "/" | "%" | "&&" | "||"
+	| "==" | "!=" | "<" | "<=" | ">" | ">=" 
 <identifier> ::= ? Identifier token ?
 <int> ::= ? Constant token ?
 
@@ -32,9 +34,15 @@ function_definition = Function(identifier, instruction* body)
 instruction = Return(val)
             | Unary(unary_operator, val src, val dst)
             | Binary(binary_operator, val src1, val src2, val dst)
+			| Copy(val src, val dst)
+			| Jump(identifier target)
+			| JumpIfZero(val condition, identifier target)
+			| JumpIfNotZero(val condition, identifier target)
+			| Label(identifier)
 val = Constant(int) | Var(identifier)
 unary_operator = Complement | Negation
-binary_operator = Add | Subtract | Multiply | Divide | Remainder
+binary_operator = Add | Subtract | Multiply | Divide | Remainder | And | Or
+	| Equal | NotEqual | LessThan | LessEqualThan | GreaterThan | GreaterEqualThan
 
 ==========================
 ASM Definition
@@ -45,12 +53,17 @@ function_definition = Function(identifier, instruction* body)
 instruction = Mov(operand src, operand dst)
     | Unary(unary_operator, operand)
     | Binary(binary_operator, operand, operand)
+    | Cmp(operand, operand)
     | Idiv(operand)
     | Cdq
+	| Jmp(identifier)
+	| JmpCC(cond_code, identifier)
+	| SetCC(cond_code, operand)
+	| Label(identifier)
     | AllocateStack(int)
     | Ret
 unary_operator = Neg | Not
 binary_operator = Add | Sub | Mult
-
 operand = Imm(int) | Reg(reg) | Pseudo(identifier) | Stack(int)
+cond_code = E | NE | G | GE | L | LE
 reg = AX | DX | R10 | R11

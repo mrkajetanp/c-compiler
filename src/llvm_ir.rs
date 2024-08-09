@@ -4,8 +4,14 @@ use llvm_sys::prelude::{LLVMBuilderRef, LLVMModuleRef, LLVMValueRef};
 use llvm_sys::LLVMValue;
 use std::ffi::{CStr, CString};
 
+use llvm_sys::core::{
+    LLVMAddFunction, LLVMAppendBasicBlock, LLVMBuildAdd, LLVMBuildMul, LLVMBuildNeg, LLVMBuildNot,
+    LLVMBuildRet, LLVMBuildSDiv, LLVMBuildSRem, LLVMBuildSub, LLVMConstInt, LLVMContextCreate,
+    LLVMContextDispose, LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMDisposeMessage,
+    LLVMDisposeModule, LLVMFunctionType, LLVMInt32TypeInContext, LLVMModuleCreateWithNameInContext,
+    LLVMPositionBuilderAtEnd, LLVMPrintModuleToString, LLVMVoidTypeInContext,
+};
 use llvm_sys::prelude::LLVMContextRef;
-use llvm_sys::core::{LLVMAddFunction, LLVMAppendBasicBlock, LLVMBuildAdd, LLVMBuildMul, LLVMBuildNeg, LLVMBuildNot, LLVMBuildRet, LLVMBuildSDiv, LLVMBuildSRem, LLVMBuildSub, LLVMConstInt, LLVMContextCreate, LLVMContextDispose, LLVMCreateBuilderInContext, LLVMDisposeBuilder, LLVMDisposeMessage, LLVMDisposeModule, LLVMFunctionType, LLVMInt32TypeInContext, LLVMModuleCreateWithNameInContext, LLVMPositionBuilderAtEnd, LLVMPrintModuleToString, LLVMVoidTypeInContext};
 
 #[allow(dead_code)]
 struct LLIrCtx {
@@ -20,16 +26,14 @@ impl LLIrCtx {
         let name = CString::new(name).unwrap();
         unsafe {
             let ctx = LLVMContextCreate();
-            let module = LLVMModuleCreateWithNameInContext(
-                name.as_ptr(), ctx
-            );
+            let module = LLVMModuleCreateWithNameInContext(name.as_ptr(), ctx);
             let builder = LLVMCreateBuilderInContext(ctx);
 
             LLIrCtx {
                 ll: ctx,
                 llmod: module,
                 builder,
-                temp_var_id: 0
+                temp_var_id: 0,
             }
         }
     }
@@ -51,7 +55,6 @@ impl Drop for LLIrCtx {
     }
 }
 
-
 impl<'a> ast::Program {
     pub fn to_llvm(self, name: &str) -> String {
         let mut codegen = LLIrCtx::new(name);
@@ -70,12 +73,8 @@ impl<'a> ast::Function {
         let name = CString::new(self.name).unwrap();
         let fn_type = LLVMInt32TypeInContext(llvm.ll);
         let param_types = [LLVMVoidTypeInContext(llvm.ll)].as_mut_ptr();
-        let fn_type = LLVMFunctionType(
-            fn_type, param_types, 0, 0
-        );
-        let func = LLVMAddFunction(
-            llvm.llmod, name.as_ptr(), fn_type
-        );
+        let fn_type = LLVMFunctionType(fn_type, param_types, 0, 0);
+        let func = LLVMAddFunction(llvm.llmod, name.as_ptr(), fn_type);
         let block_name = CString::new("entry").unwrap();
         let block = LLVMAppendBasicBlock(func, block_name.as_ptr());
         LLVMPositionBuilderAtEnd(llvm.builder, block);
@@ -99,43 +98,40 @@ impl<'a> ast::Expression {
     unsafe fn to_llvm(self, llvm: &mut LLIrCtx) -> LLVMValueRef {
         match self {
             ast::Expression::Constant(ref val) => {
-                LLVMConstInt(
-                    LLVMInt32TypeInContext(llvm.ll), *val as u64, 0
-                )
-            },
+                LLVMConstInt(LLVMInt32TypeInContext(llvm.ll), *val as u64, 0)
+            }
             ast::Expression::Unary(op, expr) => {
                 let op = op.to_llvm();
                 let val = expr.to_llvm(llvm);
                 let name = CString::new("negtmp").unwrap();
                 op(llvm.builder, val, name.as_ptr())
-            },
-            ast::Expression::Binary(
-                op, left, right
-            ) => {
+            }
+            ast::Expression::Binary(op, left, right) => {
                 let op = op.to_llvm();
                 let left = left.to_llvm(llvm);
                 let right = right.to_llvm(llvm);
                 let dst = llvm.temp_var();
                 op(llvm.builder, left, right, dst.as_ptr())
-            },
+            }
         }
     }
 }
 
-type LLVMUnaryOpFn = unsafe extern "C"
-    fn(LLVMBuilderRef, LLVMValueRef, *const i8) -> *mut LLVMValue;
+type LLVMUnaryOpFn =
+    unsafe extern "C" fn(LLVMBuilderRef, LLVMValueRef, *const i8) -> *mut LLVMValue;
 
 impl<'a> ast::UnaryOperator {
     unsafe fn to_llvm(self) -> LLVMUnaryOpFn {
         match self {
             ast::UnaryOperator::Negation => LLVMBuildNeg,
             ast::UnaryOperator::Complement => LLVMBuildNot,
+            _ => todo!(),
         }
     }
 }
 
-type LLVMBinaryOpFn = unsafe extern "C"
-    fn(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, *const i8) -> *mut LLVMValue;
+type LLVMBinaryOpFn =
+    unsafe extern "C" fn(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, *const i8) -> *mut LLVMValue;
 
 impl<'a> ast::BinaryOperator {
     unsafe fn to_llvm(self) -> LLVMBinaryOpFn {
@@ -145,6 +141,7 @@ impl<'a> ast::BinaryOperator {
             ast::BinaryOperator::Multiply => LLVMBuildMul,
             ast::BinaryOperator::Divide => LLVMBuildSDiv,
             ast::BinaryOperator::Remainder => LLVMBuildSRem,
+            _ => todo!(),
         }
     }
 }

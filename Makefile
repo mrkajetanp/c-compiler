@@ -9,3 +9,4 @@ clean:
 	rm -f samples/unary
 	rm -f samples/binary
 	rm -f samples/div
+	rm -f samples/logical

@@ -1,15 +1,18 @@
 use crate::lexer::*;
-use std::mem::discriminant;
-use std::collections::VecDeque;
 use display_tree::DisplayTree;
-use strum_macros::Display;
+use std::collections::VecDeque;
+use std::mem::discriminant;
+use strum_macros::{Display, EnumIs};
 
 fn expect_token(expected: TokenKind, tokens: &mut VecDeque<TokenKind>) -> TokenKind {
     let exp = discriminant(&expected);
     let actual = discriminant(&tokens[0]);
 
     if actual != exp {
-        panic!("Syntax Error: Expected {:?}, got {:?}", &expected, &tokens[0]);
+        panic!(
+            "Syntax Error: Expected {:?}, got {:?}",
+            &expected, &tokens[0]
+        );
     }
 
     tokens.pop_front().unwrap()
@@ -19,7 +22,7 @@ fn expect_token(expected: TokenKind, tokens: &mut VecDeque<TokenKind>) -> TokenK
 #[allow(dead_code)]
 pub struct Program {
     #[tree]
-    pub body: Function
+    pub body: Function,
 }
 
 impl Program {
@@ -27,7 +30,7 @@ impl Program {
         let mut tokens = VecDeque::from(tokens);
 
         let program = Program {
-            body: Function::parse(&mut tokens)
+            body: Function::parse(&mut tokens),
         };
 
         if !tokens.is_empty() {
@@ -53,11 +56,12 @@ impl Function {
         let return_type = expect_token(TokenKind::Int, tokens);
 
         let name = if let TokenKind::Identifier(n) =
-            expect_token(TokenKind::Identifier("".to_owned()), tokens) {
-                n
-            } else {
-                panic!("fatal Function name parsing error");
-            };
+            expect_token(TokenKind::Identifier("".to_owned()), tokens)
+        {
+            n
+        } else {
+            panic!("fatal Function name parsing error");
+        };
 
         expect_token(TokenKind::ParenOpen, tokens);
         expect_token(TokenKind::Void, tokens);
@@ -79,10 +83,7 @@ impl Function {
 #[derive(Debug, PartialEq, Clone, DisplayTree)]
 #[allow(dead_code)]
 pub enum Statement {
-    Return(
-        #[tree]
-        Expression
-    )
+    Return(#[tree] Expression),
 }
 
 impl Statement {
@@ -101,20 +102,12 @@ impl Statement {
 #[allow(dead_code)]
 pub enum Expression {
     Constant(i64),
-    Unary(
-        #[node_label]
-        UnaryOperator,
-        #[tree]
-        Box<Expression>
-    ),
+    Unary(#[node_label] UnaryOperator, #[tree] Box<Expression>),
     Binary(
-        #[node_label]
-        BinaryOperator,
-        #[tree]
-        Box<Expression>,
-        #[tree]
-        Box<Expression>
-    )
+        #[node_label] BinaryOperator,
+        #[tree] Box<Expression>,
+        #[tree] Box<Expression>,
+    ),
 }
 
 impl Expression {
@@ -127,9 +120,7 @@ impl Expression {
 
         while token.is_binary_operator() && token.precedence() > min_precedence {
             let operator = BinaryOperator::parse(tokens);
-            let right = Expression::parse(
-                tokens, token.precedence() + 1
-            );
+            let right = Expression::parse(tokens, token.precedence() + 1);
             left = Expression::Binary(operator, Box::new(left), Box::new(right));
             token = tokens.front().unwrap().to_owned();
         }
@@ -143,13 +134,12 @@ impl Expression {
         let token = tokens.front().unwrap().to_owned();
 
         if token.is_constant() {
-            if let TokenKind::Constant(val) =
-                expect_token(TokenKind::Constant(0), tokens) {
-                    return Self::Constant(val);
+            if let TokenKind::Constant(val) = expect_token(TokenKind::Constant(0), tokens) {
+                return Self::Constant(val);
             }
         }
 
-        if token.is_complement() || token.is_minus() {
+        if token.is_unary_operator() {
             let operator = UnaryOperator::parse(tokens);
             let inner = Expression::parse_factor(tokens);
             return Self::Unary(operator, Box::new(inner));
@@ -166,14 +156,22 @@ impl Expression {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, DisplayTree, Display)]
+#[derive(Debug, PartialEq, Clone, DisplayTree, Display, EnumIs)]
 #[allow(dead_code)]
 pub enum BinaryOperator {
     Add,
     Subtract,
     Multiply,
     Divide,
-    Remainder
+    Remainder,
+    And,
+    Or,
+    Equal,
+    NotEqual,
+    LessEqualThan,
+    GreaterEqualThan,
+    LessThan,
+    GreaterThan,
 }
 
 impl BinaryOperator {
@@ -186,18 +184,32 @@ impl BinaryOperator {
             TokenKind::Asterisk => Self::Multiply,
             TokenKind::Slash => Self::Divide,
             TokenKind::Percent => Self::Remainder,
-            _ => panic!("Fatal error: Unexpected binary operator token")
+            TokenKind::And => Self::And,
+            TokenKind::Or => Self::Or,
+            TokenKind::Equal => Self::Equal,
+            TokenKind::NotEqual => Self::NotEqual,
+            TokenKind::LessEqualThan => Self::LessEqualThan,
+            TokenKind::GreaterEqualThan => Self::GreaterEqualThan,
+            TokenKind::LessThan => Self::LessThan,
+            TokenKind::GreaterThan => Self::GreaterThan,
+            _ => panic!("Fatal error: Unexpected binary operator token"),
         }
     }
 
-
+    pub fn is_short_circuit(&self) -> bool {
+        match &self {
+            &BinaryOperator::And | &BinaryOperator::Or => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, DisplayTree, Display)]
 #[allow(dead_code)]
 pub enum UnaryOperator {
     Complement,
-    Negation
+    Negation,
+    Not,
 }
 
 impl UnaryOperator {
@@ -207,7 +219,8 @@ impl UnaryOperator {
         match token {
             TokenKind::Complement => Self::Complement,
             TokenKind::Minus => Self::Negation,
-            _ => panic!("Fatal error: Unexpected unary operator token")
+            TokenKind::Not => Self::Not,
+            _ => panic!("Fatal error: Unexpected unary operator token"),
         }
     }
 }
@@ -219,20 +232,26 @@ mod tests {
     #[test]
     fn parse_program() {
         let tokens = vec![
-            TokenKind::Int, TokenKind::Identifier("main".to_owned()),
-            TokenKind::ParenOpen, TokenKind::Void, TokenKind::ParenClose,
-            TokenKind::BraceOpen, TokenKind::Return, TokenKind::Constant(7),
-            TokenKind::Semicolon, TokenKind::BraceClose
+            TokenKind::Int,
+            TokenKind::Identifier("main".to_owned()),
+            TokenKind::ParenOpen,
+            TokenKind::Void,
+            TokenKind::ParenClose,
+            TokenKind::BraceOpen,
+            TokenKind::Return,
+            TokenKind::Constant(7),
+            TokenKind::Semicolon,
+            TokenKind::BraceClose,
         ];
 
         let function_expected = Function {
             name: "main".to_owned(),
             return_type: "Int".to_owned(),
-            body: Statement::Return(Expression::Constant(7))
+            body: Statement::Return(Expression::Constant(7)),
         };
 
         let program_expected = Program {
-            body: function_expected
+            body: function_expected,
         };
 
         assert_eq!(Program::parse(tokens), program_expected);
@@ -241,16 +260,22 @@ mod tests {
     #[test]
     fn parse_function() {
         let mut tokens = VecDeque::from([
-            TokenKind::Int, TokenKind::Identifier("main".to_owned()),
-            TokenKind::ParenOpen, TokenKind::Void, TokenKind::ParenClose,
-            TokenKind::BraceOpen, TokenKind::Return, TokenKind::Constant(6),
-            TokenKind::Semicolon, TokenKind::BraceClose
+            TokenKind::Int,
+            TokenKind::Identifier("main".to_owned()),
+            TokenKind::ParenOpen,
+            TokenKind::Void,
+            TokenKind::ParenClose,
+            TokenKind::BraceOpen,
+            TokenKind::Return,
+            TokenKind::Constant(6),
+            TokenKind::Semicolon,
+            TokenKind::BraceClose,
         ]);
 
         let function_expected = Function {
             name: "main".to_owned(),
             return_type: "Int".to_owned(),
-            body: Statement::Return(Expression::Constant(6))
+            body: Statement::Return(Expression::Constant(6)),
         };
 
         assert_eq!(Function::parse(&mut tokens), function_expected);
@@ -260,29 +285,34 @@ mod tests {
     #[test]
     fn parse_statement_return() {
         let mut tokens = VecDeque::from([
-            TokenKind::Return, TokenKind::Constant(6), TokenKind::Semicolon
+            TokenKind::Return,
+            TokenKind::Constant(6),
+            TokenKind::Semicolon,
         ]);
-        assert_eq!(Statement::parse(&mut tokens), Statement::Return(Expression::Constant(6)));
+        assert_eq!(
+            Statement::parse(&mut tokens),
+            Statement::Return(Expression::Constant(6))
+        );
         assert!(tokens.is_empty());
     }
 
     #[test]
     fn parse_expression_factor_constant() {
         let mut tokens = VecDeque::from([TokenKind::Constant(3)]);
-        assert_eq!(Expression::parse_factor(&mut tokens), Expression::Constant(3));
+        assert_eq!(
+            Expression::parse_factor(&mut tokens),
+            Expression::Constant(3)
+        );
         assert!(tokens.is_empty());
     }
 
     #[test]
     fn parse_expression_factor_unary() {
-        let mut tokens = VecDeque::from([
-            TokenKind::Minus, TokenKind::Constant(2),
-        ]);
+        let mut tokens = VecDeque::from([TokenKind::Minus, TokenKind::Constant(2)]);
 
         let expr = Expression::parse_factor(&mut tokens);
-        let expected = Expression::Unary(
-            UnaryOperator::Negation, Box::new(Expression::Constant(2))
-        );
+        let expected =
+            Expression::Unary(UnaryOperator::Negation, Box::new(Expression::Constant(2)));
         assert_eq!(expr, expected);
         assert!(tokens.is_empty());
     }
@@ -290,15 +320,20 @@ mod tests {
     #[test]
     fn parse_expression_unary_nested() {
         let mut tokens = VecDeque::from([
-            TokenKind::Complement, TokenKind::ParenOpen, TokenKind::Minus,
-            TokenKind::Constant(4), TokenKind::ParenClose
+            TokenKind::Complement,
+            TokenKind::ParenOpen,
+            TokenKind::Minus,
+            TokenKind::Constant(4),
+            TokenKind::ParenClose,
         ]);
 
         let expr = Expression::parse_factor(&mut tokens);
         let expected = Expression::Unary(
-            UnaryOperator::Complement, Box::new(
-                Expression::Unary(UnaryOperator::Negation, Box::new(Expression::Constant(4)))
-            )
+            UnaryOperator::Complement,
+            Box::new(Expression::Unary(
+                UnaryOperator::Negation,
+                Box::new(Expression::Constant(4)),
+            )),
         );
         assert_eq!(expr, expected);
         assert!(tokens.is_empty());
@@ -306,12 +341,9 @@ mod tests {
 
     #[test]
     fn parse_unary() {
-        let mut tokens = VecDeque::from([
-            TokenKind::Complement, TokenKind::Minus
-        ]);
+        let mut tokens = VecDeque::from([TokenKind::Complement, TokenKind::Minus]);
         assert_eq!(UnaryOperator::parse(&mut tokens), UnaryOperator::Complement);
         assert_eq!(UnaryOperator::parse(&mut tokens), UnaryOperator::Negation);
         assert!(tokens.is_empty());
     }
 }
-
