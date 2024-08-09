@@ -3,6 +3,10 @@ name = "c-compiler"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+# Enable the LLVM codegen backend
+llvm = ["llvm-sys"]
+
 [[bin]]
 name = "rcc"
 path = "src/main.rs"
@@ -17,4 +21,5 @@ regex = "1.10.5"
 serial_test = "3.1.1"
 strum = { version = "0.26.3", features = ["derive"] }
 strum_macros = "0.26.4"
-llvm-sys = { version = "180", features = ["prefer-dynamic"] }
+llvm-sys = { version = "180", features = ["prefer-dynamic"], optional = true }
+cfg-if = "1.0.0"

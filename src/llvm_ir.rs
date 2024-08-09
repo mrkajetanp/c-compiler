@@ -125,7 +125,7 @@ impl<'a> ast::UnaryOperator {
         match self {
             ast::UnaryOperator::Negation => LLVMBuildNeg,
             ast::UnaryOperator::Complement => LLVMBuildNot,
-            _ => todo!(),
+            // _ => todo!(),
         }
     }
 }
@@ -141,7 +141,7 @@ impl<'a> ast::BinaryOperator {
             ast::BinaryOperator::Multiply => LLVMBuildMul,
             ast::BinaryOperator::Divide => LLVMBuildSDiv,
             ast::BinaryOperator::Remainder => LLVMBuildSRem,
-            _ => todo!(),
+            // _ => todo!(),
         }
     }
 }

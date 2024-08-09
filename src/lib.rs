@@ -1,14 +1,17 @@
-use std::fs;
-use std::process::Command;
-use std::io::{Error, Write};
-use strum::EnumIs;
 use display_tree::format_tree;
+use std::fs;
+use std::io::{Error, Write};
+use std::process::Command;
+use strum::EnumIs;
 
-pub mod lexer;
 pub mod ast;
-pub mod ir;
-pub mod llvm_ir;
 pub mod codegen;
+pub mod ir;
+pub mod lexer;
+#[cfg(feature = "llvm")]
+pub mod llvm_ir;
+
+use cfg_if::cfg_if;
 
 use lexer::TokenKind;
 
@@ -18,7 +21,7 @@ pub enum CompileStage {
     Parse,
     IR,
     Codegen,
-    Full
+    Full,
 }
 
 pub struct Driver {
@@ -30,11 +33,11 @@ impl Driver {
     pub fn new(path: &str) -> Self {
         Self {
             path: path.to_owned(),
-            name: path[..path.len()-2].to_owned(),
+            name: path[..path.len() - 2].to_owned(),
         }
     }
 
-    pub fn compile(&self, stage: CompileStage, llvm: bool) {
+    pub fn compile(&self, stage: CompileStage, _llvm: bool) {
         let preprocessed_path = self.preprocess();
         let source = fs::read_to_string(preprocessed_path).unwrap();
         self.clean_preprocessed().unwrap();
@@ -56,50 +59,50 @@ impl Driver {
             return;
         }
 
-        let asm_path = if llvm {
-            let ir = self.generate_llvm_ir(ast);
-            log::debug!("Generated LLVM IR:\n{}\n", &ir);
-
-            if stage.is_ir() {
-                return;
+        let asm_path: Option<String>;
+        cfg_if! {
+            if #[cfg(feature = "llvm")] {
+                if _llvm {
+                    asm_path = self.llvm_asm_path(ast, stage);
+                } else {
+                    asm_path = self.asm_path(ast, stage);
+                }
+            } else {
+                asm_path = self.asm_path(ast, stage)
             }
+        }
 
-            let llvm_ir_path = self.emit_llvm(&ir).unwrap();
+        if let Some(p) = asm_path {
+            self.assemble(&p);
+            self.clean_asm().unwrap();
+        }
+    }
 
-            let path = self.llvm_asm(&llvm_ir_path);
-            let asm = fs::read_to_string(&path).unwrap();
-            log::debug!("Emitted assembly:\n\n{}", asm);
+    pub fn asm_path(&self, ast: ast::Program, stage: CompileStage) -> Option<String> {
+        let ir = self.generate_ir(ast);
+        log::debug!("Generated IR:\n{}\n", &ir);
 
-            self.clean_llvm().unwrap();
-            path
-        } else {
-            let ir = self.generate_ir(ast);
-            log::debug!("Generated IR:\n{}\n", &ir);
+        if stage.is_ir() {
+            return None;
+        }
 
-            if stage.is_ir() {
-                return;
-            }
+        let code = self.codegen(ir);
+        log::debug!("Codegen:\n{}\n", &code);
 
-            let code = self.codegen(ir);
-            log::debug!("Codegen:\n{}\n", &code);
+        if stage.is_codegen() {
+            return None;
+        }
 
-            if stage.is_codegen() {
-                return;
-            }
-
-            self.emit(code).unwrap()
-        };
-
-        self.assemble(&asm_path);
-        self.clean_asm().unwrap();
+        Some(self.emit(code).unwrap())
     }
 
     pub fn preprocess(&self) -> String {
         let output_path = self.path.replace(".c", ".i");
 
-        let _ = Command::new("gcc").args([
-            "-E", "-P", &self.path, "-o", output_path.as_str()
-        ]).status().expect("Failed to run the preprocessor");
+        let _ = Command::new("gcc")
+            .args(["-E", "-P", &self.path, "-o", output_path.as_str()])
+            .status()
+            .expect("Failed to run the preprocessor");
 
         output_path
     }
@@ -117,10 +120,6 @@ impl Driver {
         ir::Program::generate(ast, &mut ir_ctx)
     }
 
-    fn generate_llvm_ir(&self, ast: ast::Program) -> String {
-        ast.to_llvm(&self.name)
-    }
-
     fn codegen(&self, ir: ir::Program) -> codegen::Program {
         codegen::Program::codegen(ir)
     }
@@ -136,30 +135,11 @@ impl Driver {
         Ok(output_path)
     }
 
-    fn emit_llvm(&self, llvm_ir: &str) -> Result<String, Error> {
-        let output_path = format!("{}.ll", self.name);
-        let mut file = fs::File::create(&output_path)?;
-        file.write_all(llvm_ir.as_bytes())?;
-        Ok(output_path)
-    }
-
-    fn llvm_asm(&self, path: &str) -> String {
-        let output_path = format!("{}.s", self.name);
-        let _ = Command::new("llc").args([
-            path, "-o", &output_path
-        ]).status().expect("Failed to run llc");
-        output_path
-    }
-
     fn assemble(&self, path: &str) {
-        let _ = Command::new("gcc").args([
-            path, "-o", &self.name,
-        ]).status().expect("Failed to run the assembler");
-    }
-
-    fn clean_llvm(&self) -> Result<(), Error> {
-        fs::remove_file(format!("{}.ll", self.name))?;
-        Ok(())
+        let _ = Command::new("gcc")
+            .args([path, "-o", &self.name])
+            .status()
+            .expect("Failed to run the assembler");
     }
 
     fn clean_asm(&self) -> Result<(), Error> {
@@ -174,6 +154,56 @@ impl Driver {
 
     pub fn clean_binary(&self) -> Result<(), Error> {
         fs::remove_file(format!("{}", self.name))?;
+        Ok(())
+    }
+
+    // *** LLVM-specific methods *** //
+
+    #[cfg(feature = "llvm")]
+    fn generate_llvm_ir(&self, ast: ast::Program) -> String {
+        ast.to_llvm(&self.name)
+    }
+
+    #[cfg(feature = "llvm")]
+    pub fn llvm_asm_path(&self, ast: ast::Program, stage: CompileStage) -> Option<String> {
+        let ir = self.generate_llvm_ir(ast);
+        log::debug!("Generated LLVM IR:\n{}\n", &ir);
+
+        if stage.is_ir() {
+            return None;
+        }
+
+        let llvm_ir_path = self.emit_llvm(&ir).unwrap();
+
+        let path = self.llvm_asm(&llvm_ir_path);
+        let asm = fs::read_to_string(&path).unwrap();
+        log::debug!("Emitted assembly:\n\n{}", asm);
+
+        self.clean_llvm().unwrap();
+        Some(path)
+    }
+
+    #[cfg(feature = "llvm")]
+    fn llvm_asm(&self, path: &str) -> String {
+        let output_path = format!("{}.s", self.name);
+        let _ = Command::new("llc")
+            .args([path, "-o", &output_path])
+            .status()
+            .expect("Failed to run llc");
+        output_path
+    }
+
+    #[cfg(feature = "llvm")]
+    fn emit_llvm(&self, llvm_ir: &str) -> Result<String, Error> {
+        let output_path = format!("{}.ll", self.name);
+        let mut file = fs::File::create(&output_path)?;
+        file.write_all(llvm_ir.as_bytes())?;
+        Ok(output_path)
+    }
+
+    #[cfg(feature = "llvm")]
+    fn clean_llvm(&self) -> Result<(), Error> {
+        fs::remove_file(format!("{}.ll", self.name))?;
         Ok(())
     }
 }
