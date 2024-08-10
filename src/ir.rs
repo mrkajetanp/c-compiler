@@ -19,16 +19,16 @@ impl IrCtx {
         }
     }
 
-    pub fn temp_var(&mut self) -> String {
+    pub fn temp_var(&mut self) -> Identifier {
         let id = self.temp_var_id;
         self.temp_var_id += 1;
-        format!("tmp.{}", id)
+        Identifier::new(format!("tmp.{}", id).as_str())
     }
 
-    pub fn label(&mut self, label: &str) -> String {
+    pub fn label(&mut self, label: &str) -> Identifier {
         let id = self.label_id;
         self.label_id += 1;
-        format!("{}{}", label, id)
+        Identifier::new(format!("{}{}", label, id).as_str())
     }
 }
 
@@ -56,7 +56,7 @@ impl fmt::Display for Program {
 #[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub struct Function {
-    pub name: String,
+    pub name: Identifier,
     pub return_type: String,
     pub instructions: Vec<Instruction>,
 }
@@ -74,7 +74,7 @@ impl fmt::Display for Function {
 impl Function {
     pub fn generate(function: ast::Function, ctx: &mut IrCtx) -> Self {
         Function {
-            name: function.name,
+            name: Identifier::generate(function.name),
             return_type: function.return_type,
             instructions: todo!(), // instructions: Instruction::generate_from_statement(function.body, ctx),
         }
@@ -88,10 +88,10 @@ pub enum Instruction {
     Unary(UnaryOperator, Val, Val),
     Binary(BinaryOperator, Val, Val, Val),
     Copy(Val, Val),
-    Jump(String),
-    JumpIfZero(Val, String),
-    JumpIfNotZero(Val, String),
-    Label(String),
+    Jump(Identifier),
+    JumpIfZero(Val, Identifier),
+    JumpIfNotZero(Val, Identifier),
+    Label(Identifier),
 }
 
 impl Instruction {
@@ -135,7 +135,7 @@ impl fmt::Display for Instruction {
 #[allow(dead_code)]
 pub enum Val {
     Constant(i64),
-    Var(String),
+    Var(Identifier),
 }
 
 impl Val {
@@ -315,6 +315,30 @@ impl fmt::Display for UnaryOperator {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
+#[allow(dead_code)]
+pub struct Identifier {
+    pub name: String,
+}
+
+impl Identifier {
+    pub fn generate(ident: ast::Identifier) -> Self {
+        Self { name: ident.name }
+    }
+
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_owned(),
+        }
+    }
+}
+
+impl fmt::Display for Identifier {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -380,9 +404,9 @@ mod tests {
             Instruction::Unary(
                 UnaryOperator::Negation,
                 Val::Constant(5),
-                Val::Var("tmp.0".to_owned()),
+                Val::Var(Identifier::new("tmp.0")),
             ),
-            Instruction::Return(Val::Var("tmp.0".to_owned())),
+            Instruction::Return(Val::Var(Identifier::new("tmp.0"))),
         ];
         assert_eq!(actual, expected);
     }
@@ -420,7 +444,7 @@ mod tests {
             &mut instructions,
             &mut ctx,
         );
-        let expected = Val::Var("tmp.0".to_owned());
+        let expected = Val::Var(Identifier::new("tmp.0"));
         assert_eq!(actual, expected);
         let instr = instructions.pop().unwrap();
         let expected_instr =

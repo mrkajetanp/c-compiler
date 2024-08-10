@@ -1,6 +1,7 @@
 use crate::lexer::*;
 use display_tree::DisplayTree;
 use std::collections::VecDeque;
+use std::fmt;
 use std::mem::discriminant;
 use strum_macros::{Display, EnumIs};
 
@@ -44,7 +45,7 @@ impl Program {
 #[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub struct Function {
-    pub name: String,
+    pub name: Identifier,
     pub return_type: String,
     pub body: Vec<BlockItem>,
 }
@@ -71,13 +72,7 @@ impl Function {
     fn parse(tokens: &mut VecDeque<TokenKind>) -> Function {
         let return_type = expect_token(TokenKind::Int, tokens);
 
-        let name = if let TokenKind::Identifier(n) =
-            expect_token(TokenKind::Identifier("".to_owned()), tokens)
-        {
-            n
-        } else {
-            panic!("fatal Function name parsing error");
-        };
+        let name = Identifier::parse(expect_token(TokenKind::Identifier("".to_owned()), tokens));
 
         expect_token(TokenKind::ParenOpen, tokens);
         expect_token(TokenKind::Void, tokens);
@@ -122,7 +117,7 @@ impl BlockItem {
 #[allow(dead_code)]
 pub struct Declaration {
     #[node_label]
-    pub name: String,
+    pub name: Identifier,
     #[ignore_field]
     pub init: Option<Expression>,
 }
@@ -132,13 +127,7 @@ impl Declaration {
         log::trace!("parsing declaration from {:?}", tokens);
         // TODO: actually use the type
         let _ty = expect_token(TokenKind::Int, tokens);
-        let ident = if let TokenKind::Identifier(name) =
-            expect_token(TokenKind::Identifier("".to_owned()), tokens)
-        {
-            name
-        } else {
-            panic!("Error parsing identifier name in declaration {:?}", tokens)
-        };
+        let ident = Identifier::parse(expect_token(TokenKind::Identifier("".to_owned()), tokens));
 
         let init = if tokens.front().unwrap().to_owned().is_semicolon() {
             None
@@ -191,7 +180,7 @@ impl Statement {
 #[allow(dead_code)]
 pub enum Expression {
     Constant(i64),
-    Var(String),
+    Var(Identifier),
     Unary(#[node_label] UnaryOperator, #[tree] Box<Expression>),
     Binary(
         #[node_label] BinaryOperator,
@@ -240,11 +229,7 @@ impl Expression {
         let token = tokens.front().unwrap().to_owned();
 
         if token.is_identifier() {
-            if let TokenKind::Identifier(name) =
-                expect_token(TokenKind::Identifier("".to_owned()), tokens)
-            {
-                return Self::Var(name);
-            }
+            return Self::Var(Identifier::parse(tokens.pop_front().unwrap()));
         }
 
         if token.is_constant() {
@@ -339,6 +324,35 @@ impl UnaryOperator {
     }
 }
 
+#[derive(Debug, PartialEq, Clone, DisplayTree)]
+#[allow(dead_code)]
+pub struct Identifier {
+    #[node_label]
+    pub name: String,
+}
+
+impl Identifier {
+    pub fn parse(token: TokenKind) -> Self {
+        if let TokenKind::Identifier(name) = token {
+            Self { name }
+        } else {
+            panic!("Failed to parse Identifier from {:?}", token)
+        }
+    }
+
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_owned(),
+        }
+    }
+}
+
+impl fmt::Display for Identifier {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -359,7 +373,7 @@ mod tests {
         ];
 
         let function_expected = Function {
-            name: "main".to_owned(),
+            name: Identifier::new("main"),
             return_type: "Int".to_owned(),
             body: vec![BlockItem::Stmt(Statement::Return(Expression::Constant(7)))],
         };
@@ -387,7 +401,7 @@ mod tests {
         ]);
 
         let function_expected = Function {
-            name: "main".to_owned(),
+            name: Identifier::new("main"),
             return_type: "Int".to_owned(),
             body: vec![BlockItem::Stmt(Statement::Return(Expression::Constant(6)))],
         };
