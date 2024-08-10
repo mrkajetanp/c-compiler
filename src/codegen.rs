@@ -292,36 +292,34 @@ impl Instruction {
     }
 
     pub fn emit(&self) -> String {
-        // TODO: indent and newline outside of the match
-        match self {
+        fn format_instr(instr: &str) -> String {
+            format!("\t{}\n", instr)
+        }
+
+        format_instr(&match self {
             Self::Ret => {
                 let mut result = String::new();
-                result.push_str(&format!("\t{}\n", "movq %rbp, %rsp"));
-                result.push_str(&format!("\t{}\n", "popq %rbp"));
-                result.push_str(&format!("\t{}\n", "ret"));
+                // TODO: slightly awkward, to be fixed at some point
+                // format_instr will wrap whatever the match returns in \t and \n
+                result.push_str(&format!("{}\n", "movq %rbp, %rsp"));
+                result.push_str(&format_instr("popq %rbp"));
+                result.push_str(&format!("\t{}", "ret"));
                 result
             }
-            Self::Mov(src, dst) => format!("\tmovl {}, {}\n", src.emit_4b(), dst.emit_4b()),
-            Self::Unary(operator, operand) => {
-                format!("\t{} {}\n", operator.emit(), operand.emit_4b())
-            }
+            Self::Mov(src, dst) => format!("movl {}, {}", src.emit_4b(), dst.emit_4b()),
+            Self::Unary(operator, operand) => format!("{} {}", operator.emit(), operand.emit_4b()),
             Self::Binary(operator, op1, op2) => {
-                format!(
-                    "\t{} {}, {}\n",
-                    operator.emit(),
-                    op1.emit_4b(),
-                    op2.emit_4b()
-                )
+                format!("{} {}, {}", operator.emit(), op1.emit_4b(), op2.emit_4b())
             }
-            Self::Idiv(operand) => format!("\tidivl {}\n", operand.emit_4b()),
-            Self::Cdq => format!("\tcdq\n"),
-            Self::AllocateStack(val) => format!("\tsubq ${}, %rsp\n", val),
-            Self::Cmp(a, b) => format!("\tcmpl {}, {}\n", a.emit_4b(), b.emit_4b()),
-            Self::Jmp(label) => format!("\tjmp .L{}\n", label),
-            Self::JmpCC(cc, label) => format!("\tj{} .L{}\n", cc.emit(), label),
-            Self::SetCC(cc, operand) => format!("\tset{} {}\n", cc.emit(), operand.emit_1b()),
-            Self::Label(label) => format!("\t.L{}:\n", label),
-        }
+            Self::Idiv(operand) => format!("idivl {}", operand.emit_4b()),
+            Self::Cdq => format!("cdq"),
+            Self::AllocateStack(val) => format!("subq ${}, %rsp", val),
+            Self::Cmp(a, b) => format!("cmpl {}, {}", a.emit_4b(), b.emit_4b()),
+            Self::Jmp(label) => format!("jmp .L{}", label),
+            Self::JmpCC(cc, label) => format!("j{} .L{}", cc.emit(), label),
+            Self::SetCC(cc, operand) => format!("set{} {}", cc.emit(), operand.emit_1b()),
+            Self::Label(label) => format!(".L{}:", label),
+        })
     }
 }
 
