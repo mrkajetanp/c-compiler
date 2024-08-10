@@ -30,6 +30,7 @@ static GREATER_EQUAL_THAN_RE: &str = r">=";
 static NOT_RE: &str = r"!";
 static LESS_THAN_RE: &str = r"<";
 static GREATER_THAN_RE: &str = r">";
+static ASSIGNMENT_RE: &str = r"=";
 
 // NOTE: The tokenizer will try tokens in-order based on this list
 // It *must* be ordered longest-match first
@@ -61,6 +62,7 @@ pub enum TokenKind {
     Not,
     LessThan,
     GreaterThan,
+    Assignment,
 }
 
 impl TokenKind {
@@ -106,6 +108,7 @@ impl TokenKind {
             }
             input if TokenKind::is_full_match(input, LESS_THAN_RE) => Some(Self::LessThan),
             input if TokenKind::is_full_match(input, GREATER_THAN_RE) => Some(Self::GreaterThan),
+            input if TokenKind::is_full_match(input, ASSIGNMENT_RE) => Some(Self::Assignment),
             input if TokenKind::is_full_match(input, CONSTANT_RE) => {
                 Some(Self::Constant(input.parse::<i64>().unwrap()))
             }
@@ -144,6 +147,7 @@ impl TokenKind {
             Self::GreaterEqualThan => Regex::new(GREATER_EQUAL_THAN_RE).unwrap(),
             Self::LessEqualThan => Regex::new(LESS_EQUAL_THAN_RE).unwrap(),
             Self::Equal => Regex::new(EQUAL_RE).unwrap(),
+            Self::Assignment => Regex::new(ASSIGNMENT_RE).unwrap(),
         }
     }
 
@@ -158,6 +162,7 @@ impl TokenKind {
             &TokenKind::Equal | &TokenKind::NotEqual => 30,
             &TokenKind::And => 10,
             &TokenKind::Or => 5,
+            &TokenKind::Assignment => 1,
             _ => panic!("Token {:?} does not support precedence.", self),
         }
     }
@@ -175,6 +180,7 @@ impl TokenKind {
             | &TokenKind::NotEqual
             | &TokenKind::And
             | &TokenKind::Or
+            | &TokenKind::Assignment
             | &TokenKind::Plus
             | &TokenKind::Minus => true,
             _ => false,

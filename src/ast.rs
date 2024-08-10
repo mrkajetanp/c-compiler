@@ -41,14 +41,30 @@ impl Program {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, DisplayTree)]
+#[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub struct Function {
-    #[node_label]
     pub name: String,
     pub return_type: String,
-    #[tree]
-    pub body: Statement,
+    pub body: Vec<BlockItem>,
+}
+
+impl DisplayTree for Function {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>, style: display_tree::Style) -> std::fmt::Result {
+        writeln!(f, "{} {}", self.return_type, self.name)?;
+        for block in &self.body {
+            writeln!(
+                f,
+                "{}{} {}",
+                style.char_set.connector,
+                std::iter::repeat(style.char_set.horizontal)
+                    .take(style.indentation as usize)
+                    .collect::<String>(),
+                display_tree::format_tree!(*block)
+            )?;
+        }
+        Ok(())
+    }
 }
 
 impl Function {
@@ -68,8 +84,10 @@ impl Function {
         expect_token(TokenKind::ParenClose, tokens);
         expect_token(TokenKind::BraceOpen, tokens);
 
-        let body = Statement::parse(tokens);
-
+        let mut body = vec![];
+        while !tokens.front().unwrap().to_owned().is_brace_close() {
+            body.push(BlockItem::parse(tokens));
+        }
         expect_token(TokenKind::BraceClose, tokens);
 
         Function {
@@ -82,19 +100,90 @@ impl Function {
 
 #[derive(Debug, PartialEq, Clone, DisplayTree)]
 #[allow(dead_code)]
+pub enum BlockItem {
+    Stmt(#[tree] Statement),
+    Decl(#[tree] Declaration),
+}
+
+impl BlockItem {
+    fn parse(tokens: &mut VecDeque<TokenKind>) -> Self {
+        log::trace!("parsing block item from {:?}", tokens);
+
+        let token = tokens.front().unwrap().to_owned();
+        if token.is_int() {
+            BlockItem::Decl(Declaration::parse(tokens))
+        } else {
+            BlockItem::Stmt(Statement::parse(tokens))
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, DisplayTree)]
+#[allow(dead_code)]
+pub struct Declaration {
+    #[node_label]
+    pub name: String,
+    #[ignore_field]
+    pub init: Option<Expression>,
+}
+
+impl Declaration {
+    fn parse(tokens: &mut VecDeque<TokenKind>) -> Self {
+        log::trace!("parsing declaration from {:?}", tokens);
+        // TODO: actually use the type
+        let _ty = expect_token(TokenKind::Int, tokens);
+        let ident = if let TokenKind::Identifier(name) =
+            expect_token(TokenKind::Identifier("".to_owned()), tokens)
+        {
+            name
+        } else {
+            panic!("Error parsing identifier name in declaration {:?}", tokens)
+        };
+
+        let init = if tokens.front().unwrap().to_owned().is_semicolon() {
+            None
+        } else {
+            expect_token(TokenKind::Assignment, tokens);
+            Some(Expression::parse(tokens, 0))
+        };
+        expect_token(TokenKind::Semicolon, tokens);
+
+        let result = Self { name: ident, init };
+        log::trace!("-- Parsed declaration {:?}", result);
+        result
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, DisplayTree)]
+#[allow(dead_code)]
 pub enum Statement {
     Return(#[tree] Expression),
+    Exp(#[tree] Expression),
+    Null,
 }
 
 impl Statement {
     fn parse(tokens: &mut VecDeque<TokenKind>) -> Statement {
-        expect_token(TokenKind::Return, tokens);
+        log::trace!("Trying statement from {:?}", tokens);
 
-        let expr = Expression::parse(tokens, 0);
+        let token = tokens.front().unwrap().to_owned();
+
+        if token.is_semicolon() {
+            expect_token(TokenKind::Semicolon, tokens);
+            return Statement::Null;
+        }
+
+        let result = if token.is_return() {
+            expect_token(TokenKind::Return, tokens);
+            let expr = Expression::parse(tokens, 0);
+            Self::Return(expr)
+        } else {
+            Statement::Exp(Expression::parse(tokens, 0))
+        };
 
         expect_token(TokenKind::Semicolon, tokens);
-
-        Self::Return(expr)
+        log::trace!("-- Parsed stmt {:?}", result);
+        result
     }
 }
 
@@ -102,16 +191,24 @@ impl Statement {
 #[allow(dead_code)]
 pub enum Expression {
     Constant(i64),
+    Var(String),
     Unary(#[node_label] UnaryOperator, #[tree] Box<Expression>),
     Binary(
         #[node_label] BinaryOperator,
         #[tree] Box<Expression>,
         #[tree] Box<Expression>,
     ),
+    Assignment(#[tree] Box<Expression>, #[tree] Box<Expression>),
 }
 
 impl Expression {
     fn parse(tokens: &mut VecDeque<TokenKind>, min_precedence: u32) -> Expression {
+        log::trace!(
+            "Trying expr from {:?} precedence {}",
+            tokens,
+            min_precedence
+        );
+
         if tokens.len() == 0 {
             panic!("No tokens to parse");
         }
@@ -119,19 +216,36 @@ impl Expression {
         let mut token = tokens.front().unwrap().to_owned();
 
         while token.is_binary_operator() && token.precedence() > min_precedence {
-            let operator = BinaryOperator::parse(tokens);
-            let right = Expression::parse(tokens, token.precedence() + 1);
-            left = Expression::Binary(operator, Box::new(left), Box::new(right));
+            if token.is_assignment() {
+                expect_token(TokenKind::Assignment, tokens);
+                let right = Expression::parse(tokens, token.precedence());
+                left = Expression::Assignment(Box::new(left), Box::new(right));
+            } else {
+                let operator = BinaryOperator::parse(tokens);
+                let right = Expression::parse(tokens, token.precedence() + 1);
+                left = Expression::Binary(operator, Box::new(left), Box::new(right));
+            }
             token = tokens.front().unwrap().to_owned();
         }
+        log::trace!("-- Parsed expr {:?}", left);
         left
     }
 
     fn parse_factor(tokens: &mut VecDeque<TokenKind>) -> Expression {
+        log::trace!("Trying factor from {:?}", tokens);
+
         if tokens.len() == 0 {
             panic!("No tokens to parse");
         }
         let token = tokens.front().unwrap().to_owned();
+
+        if token.is_identifier() {
+            if let TokenKind::Identifier(name) =
+                expect_token(TokenKind::Identifier("".to_owned()), tokens)
+            {
+                return Self::Var(name);
+            }
+        }
 
         if token.is_constant() {
             if let TokenKind::Constant(val) = expect_token(TokenKind::Constant(0), tokens) {
@@ -247,7 +361,7 @@ mod tests {
         let function_expected = Function {
             name: "main".to_owned(),
             return_type: "Int".to_owned(),
-            body: Statement::Return(Expression::Constant(7)),
+            body: vec![BlockItem::Stmt(Statement::Return(Expression::Constant(7)))],
         };
 
         let program_expected = Program {
@@ -275,7 +389,7 @@ mod tests {
         let function_expected = Function {
             name: "main".to_owned(),
             return_type: "Int".to_owned(),
-            body: Statement::Return(Expression::Constant(6)),
+            body: vec![BlockItem::Stmt(Statement::Return(Expression::Constant(6)))],
         };
 
         assert_eq!(Function::parse(&mut tokens), function_expected);
