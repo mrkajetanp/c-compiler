@@ -15,6 +15,9 @@ struct Cli {
     parse: bool,
 
     #[arg(short, long)]
+    validate: bool,
+
+    #[arg(short, long)]
     tacky: bool,
 
     #[arg(short, long)]
@@ -55,6 +58,8 @@ fn main() {
         CompileStage::Lex
     } else if cli.parse {
         CompileStage::Parse
+    } else if cli.validate {
+        CompileStage::Validate
     } else if cli.tacky || cli.ir {
         CompileStage::IR
     } else if cli.codegen {

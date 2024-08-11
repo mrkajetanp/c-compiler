@@ -113,12 +113,10 @@ impl BlockItem {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, DisplayTree)]
+#[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub struct Declaration {
-    #[node_label]
     pub name: Identifier,
-    #[ignore_field]
     pub init: Option<Expression>,
 }
 
@@ -140,6 +138,24 @@ impl Declaration {
         let result = Self { name: ident, init };
         log::trace!("-- Parsed declaration {:?}", result);
         result
+    }
+}
+
+impl DisplayTree for Declaration {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>, style: display_tree::Style) -> std::fmt::Result {
+        writeln!(f, "{}", self.name)?;
+        if let Some(init) = &self.init {
+            writeln!(
+                f,
+                "{}{} {}",
+                style.char_set.connector,
+                std::iter::repeat(style.char_set.horizontal)
+                    .take(style.indentation as usize)
+                    .collect::<String>(),
+                display_tree::format_tree!(*init)
+            )?;
+        }
+        Ok(())
     }
 }
 
@@ -204,7 +220,7 @@ impl Expression {
         let mut left = Expression::parse_factor(tokens);
         let mut token = tokens.front().unwrap().to_owned();
 
-        while token.is_binary_operator() && token.precedence() > min_precedence {
+        while token.is_binary_operator() && token.precedence() >= min_precedence {
             if token.is_assignment() {
                 expect_token(TokenKind::Assignment, tokens);
                 let right = Expression::parse(tokens, token.precedence());
