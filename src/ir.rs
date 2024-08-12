@@ -22,7 +22,7 @@ impl IrCtx {
     pub fn temp_var(&mut self) -> Identifier {
         let id = self.temp_var_id;
         self.temp_var_id += 1;
-        Identifier::new(format!("tmp.{}", id).as_str())
+        Identifier::new(format!("tmp.ir.{}", id).as_str())
     }
 
     pub fn label(&mut self, label: &str) -> Identifier {
@@ -76,7 +76,13 @@ impl Function {
         Function {
             name: Identifier::generate(function.name),
             return_type: function.return_type,
-            instructions: todo!(), // instructions: Instruction::generate_from_statement(function.body, ctx),
+            instructions: function
+                .body
+                .into_iter()
+                .flat_map(|block| Instruction::generate_from_block(block, ctx))
+                // Implicit return 0 at the end of each function
+                .chain([Instruction::Return(Val::Constant(0))])
+                .collect(),
         }
     }
 }
@@ -95,6 +101,23 @@ pub enum Instruction {
 }
 
 impl Instruction {
+    pub fn generate_from_block(block: ast::BlockItem, ctx: &mut IrCtx) -> Vec<Self> {
+        match block {
+            ast::BlockItem::Stmt(statement) => Self::generate_from_statement(statement, ctx),
+            ast::BlockItem::Decl(declaration) => Self::generate_from_declaration(declaration, ctx),
+        }
+    }
+
+    pub fn generate_from_declaration(declaration: ast::Declaration, ctx: &mut IrCtx) -> Vec<Self> {
+        if let Some(expr) = declaration.init {
+            let left = ast::Expression::Var(declaration.name);
+            let assignment = ast::Expression::Assignment(Box::new(left), Box::new(expr));
+            Self::generate_from_expr(assignment, ctx).0
+        } else {
+            vec![]
+        }
+    }
+
     pub fn generate_from_statement(statement: ast::Statement, ctx: &mut IrCtx) -> Vec<Self> {
         match statement {
             Statement::Return(expr) => {
@@ -102,7 +125,8 @@ impl Instruction {
                 instructions.push(Instruction::Return(val));
                 instructions
             }
-            _ => todo!(),
+            Statement::Exp(expr) => Self::generate_from_expr(expr, ctx).0,
+            Statement::Null => vec![],
         }
     }
 
@@ -191,7 +215,13 @@ impl Val {
                 instructions.push(Instruction::Binary(ir_operator, v1, v2, dst.clone()));
                 dst
             }
-            _ => todo!(),
+            ast::Expression::Var(ident) => Self::Var(Identifier::generate(ident)),
+            ast::Expression::Assignment(left, right) => {
+                let left = Val::generate(*left, instructions, ctx);
+                let right = Val::generate(*right, instructions, ctx);
+                instructions.push(Instruction::Copy(right, left.clone()));
+                left
+            }
         }
     }
 }
@@ -240,7 +270,6 @@ impl BinaryOperator {
             ast::BinaryOperator::GreaterEqualThan => Self::GreaterEqualThan,
             ast::BinaryOperator::LessThan => Self::LessThan,
             ast::BinaryOperator::GreaterThan => Self::GreaterThan,
-            _ => todo!(),
         }
     }
 
@@ -299,7 +328,6 @@ impl UnaryOperator {
             ast::UnaryOperator::Complement => Self::Complement,
             ast::UnaryOperator::Negation => Self::Negation,
             ast::UnaryOperator::Not => Self::Not,
-            // _ => todo!(),
         }
     }
 }
@@ -404,9 +432,9 @@ mod tests {
             Instruction::Unary(
                 UnaryOperator::Negation,
                 Val::Constant(5),
-                Val::Var(Identifier::new("tmp.0")),
+                Val::Var(Identifier::new("tmp.ir.0")),
             ),
-            Instruction::Return(Val::Var(Identifier::new("tmp.0"))),
+            Instruction::Return(Val::Var(Identifier::new("tmp.ir.0"))),
         ];
         assert_eq!(actual, expected);
     }
@@ -444,7 +472,7 @@ mod tests {
             &mut instructions,
             &mut ctx,
         );
-        let expected = Val::Var(Identifier::new("tmp.0"));
+        let expected = Val::Var(Identifier::new("tmp.ir.0"));
         assert_eq!(actual, expected);
         let instr = instructions.pop().unwrap();
         let expected_instr =
