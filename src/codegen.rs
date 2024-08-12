@@ -20,6 +20,7 @@ impl Program {
     pub fn emit(&self) -> String {
         let mut result = String::new();
 
+        result.push_str(&format!(".intel_syntax noprefix\n\n"));
         result.push_str(&self.body.emit());
         result.push_str(".section .note.GNU-stack,\"\",@progbits\n");
         result.push_str(&format!(".globl {}\n", self.body.name));
@@ -89,8 +90,9 @@ impl Function {
         let mut result = String::new();
 
         result.push_str(&format!("{}:\n", self.name));
-        result.push_str(&format!("\t{}\n", "pushq %rbp"));
-        result.push_str(&format!("\t{}\n", "movq %rsp, %rbp"));
+        // Emit function prologue
+        result.push_str(&format!("\t{}\n", "push rbp"));
+        result.push_str(&format!("\t{}\n", "mov rbp, rsp"));
         for instr in &self.instructions {
             result.push_str(&instr.emit());
         }
@@ -301,20 +303,20 @@ impl Instruction {
                 let mut result = String::new();
                 // TODO: slightly awkward, to be fixed at some point
                 // format_instr will wrap whatever the match returns in \t and \n
-                result.push_str(&format!("{}\n", "movq %rbp, %rsp"));
-                result.push_str(&format_instr("popq %rbp"));
+                result.push_str(&format!("{}\n", "mov rsp, rbp"));
+                result.push_str(&format_instr("pop rbp"));
                 result.push_str(&format!("\t{}", "ret"));
                 result
             }
-            Self::Mov(src, dst) => format!("movl {}, {}", src.emit_4b(), dst.emit_4b()),
+            Self::Mov(src, dst) => format!("mov {}, {}", dst.emit_4b(), src.emit_4b()),
             Self::Unary(operator, operand) => format!("{} {}", operator.emit(), operand.emit_4b()),
             Self::Binary(operator, op1, op2) => {
-                format!("{} {}, {}", operator.emit(), op1.emit_4b(), op2.emit_4b())
+                format!("{} {}, {}", operator.emit(), op2.emit_4b(), op1.emit_4b())
             }
-            Self::Idiv(operand) => format!("idivl {}", operand.emit_4b()),
+            Self::Idiv(operand) => format!("idiv {}", operand.emit_4b()),
             Self::Cdq => format!("cdq"),
-            Self::AllocateStack(val) => format!("subq ${}, %rsp", val),
-            Self::Cmp(a, b) => format!("cmpl {}, {}", a.emit_4b(), b.emit_4b()),
+            Self::AllocateStack(val) => format!("sub rsp, {}", val),
+            Self::Cmp(a, b) => format!("cmp {}, {}", b.emit_4b(), a.emit_4b()),
             Self::Jmp(label) => format!("jmp .L{}", label),
             Self::JmpCC(cc, label) => format!("j{} .L{}", cc.emit(), label),
             Self::SetCC(cc, operand) => format!("set{} {}", cc.emit(), operand.emit_1b()),
@@ -327,7 +329,7 @@ impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let result = match self {
             Self::Ret => format!("<epilogue>"),
-            Self::Mov(src, dst) => format!("mov {}, {}", src, dst),
+            Self::Mov(src, dst) => format!("mov {}, {}", dst, src),
             Self::Unary(operator, operand) => format!("{} {}", operator, operand),
             Self::Binary(operator, op1, op2) => format!("{} {}, {}", operator, op1, op2),
             Self::Idiv(operand) => format!("div {}", operand),
@@ -364,9 +366,9 @@ impl BinaryOperator {
 
     pub fn emit(&self) -> String {
         match self {
-            &BinaryOperator::Add => "addl",
-            &BinaryOperator::Sub => "subl",
-            &BinaryOperator::Mult => "imull",
+            &BinaryOperator::Add => "add",
+            &BinaryOperator::Sub => "sub",
+            &BinaryOperator::Mult => "imul",
         }
         .to_owned()
     }
@@ -401,8 +403,8 @@ impl UnaryOperator {
 
     pub fn emit(&self) -> String {
         match self {
-            Self::Neg => "negl",
-            Self::Not => "notl",
+            Self::Neg => "neg",
+            Self::Not => "not",
         }
         .to_owned()
     }
@@ -411,8 +413,8 @@ impl UnaryOperator {
 impl fmt::Display for UnaryOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let result = match self {
-            &UnaryOperator::Neg => "neg",
-            &UnaryOperator::Not => "not",
+            UnaryOperator::Neg => "neg",
+            UnaryOperator::Not => "not",
         };
         write!(f, "{}", result)
     }
@@ -465,8 +467,8 @@ impl Operand {
     pub fn emit_4b(&self) -> String {
         match self {
             Self::Reg(reg) => reg.emit_4b(),
-            Self::Immediate(val) => format!("${}", val),
-            Self::Stack(val) => format!("{}(%rbp)", val),
+            Self::Immediate(val) => format!("{}", val),
+            Self::Stack(val) => format!("DWORD PTR [rbp{}]", val),
             Self::Pseudo(_) => panic!("Fatal error: Pseudo-operand in emit stage"),
         }
     }
@@ -474,6 +476,7 @@ impl Operand {
     pub fn emit_1b(&self) -> String {
         match self {
             Self::Reg(reg) => reg.emit_1b(),
+            Self::Stack(val) => format!("BYTE PTR [rbp{}]", val),
             _ => self.emit_4b(),
         }
     }
@@ -484,7 +487,7 @@ impl fmt::Display for Operand {
         let result = match self {
             Self::Reg(reg) => format!("{}", reg),
             Self::Immediate(val) => format!("{}", val),
-            Self::Stack(val) => format!("{}(stack)", val),
+            Self::Stack(val) => format!("[rbp{}]", val),
             Self::Pseudo(name) => format!("<{}>", name),
         };
         write!(f, "{}", result)
@@ -503,19 +506,19 @@ pub enum Register {
 impl Register {
     pub fn emit_4b(&self) -> String {
         match self {
-            Self::AX => format!("%eax"),
-            Self::DX => format!("%edx"),
-            Self::R10 => format!("%r10d"),
-            Self::R11 => format!("%r11d"),
+            Self::AX => format!("eax"),
+            Self::DX => format!("edx"),
+            Self::R10 => format!("r10d"),
+            Self::R11 => format!("r11d"),
         }
     }
 
     pub fn emit_1b(&self) -> String {
         match self {
-            Self::AX => format!("%al"),
-            Self::DX => format!("%dl"),
-            Self::R10 => format!("%r10b"),
-            Self::R11 => format!("%r11b"),
+            Self::AX => format!("al"),
+            Self::DX => format!("dl"),
+            Self::R10 => format!("r10b"),
+            Self::R11 => format!("r11b"),
         }
     }
 }

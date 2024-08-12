@@ -146,7 +146,7 @@ impl Driver {
 
     fn assemble(&self, path: &str) {
         let _ = Command::new("gcc")
-            .args([path, "-o", &self.name])
+            .args([path, "-masm=intel", "-o", &self.name])
             .status()
             .expect("Failed to run the assembler");
     }
