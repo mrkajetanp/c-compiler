@@ -10,6 +10,7 @@ pub mod ir;
 pub mod lexer;
 #[cfg(feature = "llvm")]
 pub mod llvm_ir;
+pub mod semantic;
 
 use cfg_if::cfg_if;
 
@@ -19,6 +20,7 @@ use lexer::TokenKind;
 pub enum CompileStage {
     Lex,
     Parse,
+    Validate,
     IR,
     Codegen,
     Full,
@@ -56,6 +58,13 @@ impl Driver {
         log::debug!("Parsed AST:\n{}\n", format_tree!(ast));
 
         if stage.is_parse() {
+            return;
+        }
+
+        let ast = ast.validate();
+        log::debug!("Validated AST:\n{}\n", format_tree!(ast));
+
+        if stage.is_validate() {
             return;
         }
 

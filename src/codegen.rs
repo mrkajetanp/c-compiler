@@ -38,7 +38,7 @@ impl fmt::Display for Program {
 #[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 pub struct Function {
-    name: String,
+    name: Identifier,
     instructions: Vec<Instruction>,
     stack_pos: i64,
 }
@@ -52,7 +52,7 @@ impl Function {
             .collect();
 
         Self {
-            name: function.name,
+            name: Identifier::codegen(function.name),
             instructions,
             stack_pos: 0,
         }
@@ -118,10 +118,10 @@ pub enum Instruction {
     Cmp(Operand, Operand),
     Idiv(Operand),
     Cdq,
-    Jmp(String),
-    JmpCC(CondCode, String),
+    Jmp(Identifier),
+    JmpCC(CondCode, Identifier),
     SetCC(CondCode, Operand),
-    Label(String),
+    Label(Identifier),
     AllocateStack(i64),
     Ret,
 }
@@ -192,17 +192,21 @@ impl Instruction {
                 instructions.push(Self::Mov(src, dst));
             }
 
-            ir::Instruction::Jump(target) => instructions.push(Self::Jmp(target)),
-            ir::Instruction::Label(ident) => instructions.push(Self::Label(ident)),
+            ir::Instruction::Jump(target) => {
+                instructions.push(Self::Jmp(Identifier::codegen(target)))
+            }
+            ir::Instruction::Label(ident) => {
+                instructions.push(Self::Label(Identifier::codegen(ident)))
+            }
             ir::Instruction::JumpIfZero(cond, target) => {
                 let cond = Operand::from_val(cond);
                 instructions.push(Self::Cmp(Operand::Immediate(0), cond));
-                instructions.push(Self::JmpCC(CondCode::E, target));
+                instructions.push(Self::JmpCC(CondCode::E, Identifier::codegen(target)));
             }
             ir::Instruction::JumpIfNotZero(cond, target) => {
                 let cond = Operand::from_val(cond);
                 instructions.push(Self::Cmp(Operand::Immediate(0), cond));
-                instructions.push(Self::JmpCC(CondCode::NE, target));
+                instructions.push(Self::JmpCC(CondCode::NE, Identifier::codegen(target)));
             }
             _ => panic!("Unexpected IR instruction in codegen"),
         }
@@ -288,36 +292,34 @@ impl Instruction {
     }
 
     pub fn emit(&self) -> String {
-        // TODO: indent and newline outside of the match
-        match self {
+        fn format_instr(instr: &str) -> String {
+            format!("\t{}\n", instr)
+        }
+
+        format_instr(&match self {
             Self::Ret => {
                 let mut result = String::new();
-                result.push_str(&format!("\t{}\n", "movq %rbp, %rsp"));
-                result.push_str(&format!("\t{}\n", "popq %rbp"));
-                result.push_str(&format!("\t{}\n", "ret"));
+                // TODO: slightly awkward, to be fixed at some point
+                // format_instr will wrap whatever the match returns in \t and \n
+                result.push_str(&format!("{}\n", "movq %rbp, %rsp"));
+                result.push_str(&format_instr("popq %rbp"));
+                result.push_str(&format!("\t{}", "ret"));
                 result
             }
-            Self::Mov(src, dst) => format!("\tmovl {}, {}\n", src.emit_4b(), dst.emit_4b()),
-            Self::Unary(operator, operand) => {
-                format!("\t{} {}\n", operator.emit(), operand.emit_4b())
-            }
+            Self::Mov(src, dst) => format!("movl {}, {}", src.emit_4b(), dst.emit_4b()),
+            Self::Unary(operator, operand) => format!("{} {}", operator.emit(), operand.emit_4b()),
             Self::Binary(operator, op1, op2) => {
-                format!(
-                    "\t{} {}, {}\n",
-                    operator.emit(),
-                    op1.emit_4b(),
-                    op2.emit_4b()
-                )
+                format!("{} {}, {}", operator.emit(), op1.emit_4b(), op2.emit_4b())
             }
-            Self::Idiv(operand) => format!("\tidivl {}\n", operand.emit_4b()),
-            Self::Cdq => format!("\tcdq\n"),
-            Self::AllocateStack(val) => format!("\tsubq ${}, %rsp\n", val),
-            Self::Cmp(a, b) => format!("\tcmpl {}, {}\n", a.emit_4b(), b.emit_4b()),
-            Self::Jmp(label) => format!("\tjmp .L{}\n", label),
-            Self::JmpCC(cc, label) => format!("\tj{} .L{}\n", cc.emit(), label),
-            Self::SetCC(cc, operand) => format!("\tset{} {}\n", cc.emit(), operand.emit_1b()),
-            Self::Label(label) => format!("\t.L{}:\n", label),
-        }
+            Self::Idiv(operand) => format!("idivl {}", operand.emit_4b()),
+            Self::Cdq => format!("cdq"),
+            Self::AllocateStack(val) => format!("subq ${}, %rsp", val),
+            Self::Cmp(a, b) => format!("cmpl {}, {}", a.emit_4b(), b.emit_4b()),
+            Self::Jmp(label) => format!("jmp .L{}", label),
+            Self::JmpCC(cc, label) => format!("j{} .L{}", cc.emit(), label),
+            Self::SetCC(cc, operand) => format!("set{} {}", cc.emit(), operand.emit_1b()),
+            Self::Label(label) => format!(".L{}:", label),
+        })
     }
 }
 
@@ -421,7 +423,7 @@ impl fmt::Display for UnaryOperator {
 pub enum Operand {
     Immediate(i64),
     Reg(Register),
-    Pseudo(String),
+    Pseudo(Identifier),
     Stack(i64),
 }
 
@@ -429,17 +431,17 @@ impl Operand {
     pub fn from_val(val: ir::Val) -> Self {
         match val {
             ir::Val::Constant(x) => Self::Immediate(x),
-            ir::Val::Var(name) => Self::Pseudo(name),
+            ir::Val::Var(name) => Self::Pseudo(Identifier::codegen(name)),
         }
     }
 
     fn pseudo_to_stack(&self, stack_pos: &mut i64, stack_addrs: &mut HashMap<String, i64>) -> Self {
         if let Operand::Pseudo(name) = self {
-            let addr = if let Some(addr) = stack_addrs.get(name) {
+            let addr = if let Some(addr) = stack_addrs.get(&name.to_string()) {
                 *addr
             } else {
                 *stack_pos -= 4;
-                stack_addrs.insert(name.to_owned(), *stack_pos);
+                stack_addrs.insert(name.to_string(), *stack_pos);
                 *stack_pos
             };
             Operand::Stack(addr)
@@ -559,6 +561,34 @@ impl CondCode {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
+#[allow(dead_code)]
+pub struct Identifier {
+    pub name: String,
+}
+
+impl Identifier {
+    pub fn codegen(ident: ir::Identifier) -> Self {
+        Self { name: ident.name }
+    }
+
+    pub fn emit(&self) -> String {
+        self.to_string()
+    }
+
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_owned(),
+        }
+    }
+}
+
+impl fmt::Display for Identifier {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -570,7 +600,7 @@ mod tests {
         fn program() {
             let actual = Program {
                 body: Function {
-                    name: "main".to_owned(),
+                    name: Identifier::new("main"),
                     instructions: vec![Instruction::AllocateStack(4), Instruction::Ret],
                     stack_pos: -4,
                 },
@@ -590,7 +620,7 @@ mod tests {
         #[test]
         fn function() {
             let actual = Function {
-                name: "main".to_owned(),
+                name: Identifier::new("main"),
                 instructions: vec![Instruction::AllocateStack(4), Instruction::Ret],
                 stack_pos: -4,
             }
@@ -656,7 +686,7 @@ mod tests {
         #[test]
         #[should_panic]
         fn operand_panics() {
-            Operand::Pseudo("x".to_string()).emit_4b();
+            Operand::Pseudo(Identifier::new("x")).emit_4b();
         }
 
         #[test]
@@ -673,15 +703,15 @@ mod tests {
     fn program() {
         let ir_program = ir::Program {
             body: ir::Function {
-                name: "main".to_owned(),
+                name: ir::Identifier::new("main"),
                 return_type: "Int".to_owned(),
                 instructions: vec![
                     ir::Instruction::Unary(
                         ir::UnaryOperator::Negation,
                         ir::Val::Constant(5),
-                        ir::Val::Var("x".to_owned()),
+                        ir::Val::Var(ir::Identifier::new("x")),
                     ),
-                    ir::Instruction::Return(ir::Val::Var("x".to_owned())),
+                    ir::Instruction::Return(ir::Val::Var(ir::Identifier::new("x"))),
                 ],
             },
         };
@@ -697,21 +727,21 @@ mod tests {
     #[test]
     fn function() {
         let ir_function = ir::Function {
-            name: "main".to_owned(),
+            name: ir::Identifier::new("main"),
             return_type: "Int".to_owned(),
             instructions: vec![
                 ir::Instruction::Unary(
                     ir::UnaryOperator::Negation,
                     ir::Val::Constant(5),
-                    ir::Val::Var("x".to_owned()),
+                    ir::Val::Var(ir::Identifier::new("x")),
                 ),
-                ir::Instruction::Return(ir::Val::Var("x".to_owned())),
+                ir::Instruction::Return(ir::Val::Var(ir::Identifier::new("x"))),
             ],
         };
 
         let actual = Function::codegen(ir_function);
         let expected = Function {
-            name: "main".to_owned(),
+            name: Identifier::new("main"),
             instructions: vec![
                 Instruction::AllocateStack(4),
                 Instruction::Mov(Operand::Immediate(5), Operand::Stack(-4)),
@@ -733,7 +763,7 @@ mod tests {
         let actual: Vec<Instruction> = Instruction::codegen(ir::Instruction::Unary(
             ir::UnaryOperator::Negation,
             ir::Val::Constant(5),
-            ir::Val::Var("x".to_owned()),
+            ir::Val::Var(ir::Identifier::new("x")),
         ))
         .into_iter()
         .map(|instr| instr.replace_pseudo(&mut stack_pos, &mut stack_addrs))
@@ -774,8 +804,8 @@ mod tests {
             Operand::Immediate(5)
         );
         assert_eq!(
-            Operand::from_val(ir::Val::Var("x".to_owned())),
-            Operand::Pseudo("x".to_owned())
+            Operand::from_val(ir::Val::Var(ir::Identifier::new("x"))),
+            Operand::Pseudo(Identifier::new("x"))
         );
     }
 
@@ -784,11 +814,11 @@ mod tests {
         let mut stack_addrs: HashMap<String, i64> = HashMap::new();
         let mut stack_pos: i64 = 0;
         let operand =
-            Operand::Pseudo("x".to_owned()).replace_pseudo(&mut stack_pos, &mut stack_addrs);
+            Operand::Pseudo(Identifier::new("x")).replace_pseudo(&mut stack_pos, &mut stack_addrs);
         let operand2 =
-            Operand::Pseudo("x".to_owned()).replace_pseudo(&mut stack_pos, &mut stack_addrs);
+            Operand::Pseudo(Identifier::new("x")).replace_pseudo(&mut stack_pos, &mut stack_addrs);
         let operand3 =
-            Operand::Pseudo("y".to_owned()).replace_pseudo(&mut stack_pos, &mut stack_addrs);
+            Operand::Pseudo(Identifier::new("y")).replace_pseudo(&mut stack_pos, &mut stack_addrs);
         assert_eq!(Operand::Stack(-4), operand);
         assert_eq!(Operand::Stack(-4), operand2);
         assert_eq!(Operand::Stack(-8), operand3);

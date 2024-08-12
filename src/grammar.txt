@@ -3,9 +3,15 @@ AST Definition
 ==========================
 
 program = Program(function_definition)
-function_definition = Function(identifier name, statement body)
-statement = Return(exp)
-exp = Constant(int) | Unary(unary_operator, exp) | Binary(binary_operator, exp, exp)
+function_definition = Function(identifier name, block_item* body)
+block_item = S(statement) | D(declaration)
+declaration = Declaration(identifier name, exp? init)
+statement = Return(exp) | Expression(exp) | Null
+exp = Constant(int)
+		| Var(identifier)
+		| Unary(unary_operator, exp)
+		| Binary(binary_operator, exp, exp)
+		| Assignment(exp, exp)
 unary_operator = Complement | Negation | Not
 binary_operator = Add | Subtract | Multiply | Divide | Remainder | And | Or
 	| Equal | NotEqual | LessThan | LessEqualThan | GreaterThan | GreaterEqualThan
@@ -15,10 +21,12 @@ Grammar
 ==========================
 
 <program> ::= <function>
-<function> ::= "int" <identifier> "(" "void" ")" "{" <statement> "}"
-<statement> ::= "return" <exp> ";"
+<function> ::= "int" <identifier> "(" "void" ")" "{" {<block-item>} "}"
+<block-item> ::= <statement> | <declaration>
+<declaration> ::= "int" <identifier> ["=" <exp>] ";"
+<statement> ::= "return" <exp> ";" | <exp> ";" | ";" 
 <exp> ::= <factor> | <exp> <binop> <exp>
-<factor> ::= <int> | <unop> <exp> | "(" <exp> ")"
+<factor> ::= <int> | <identifier> | <unop> <factor> | "(" <exp> ")"
 <unop> ::= "-" | "~" | "!"
 <binop> ::= "-" | "+" | "*" | "/" | "%" | "&&" | "||"
 	| "==" | "!=" | "<" | "<=" | ">" | ">=" 
