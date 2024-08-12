@@ -10,3 +10,5 @@ clean:
 	rm -f samples/binary
 	rm -f samples/div
 	rm -f samples/logical
+	rm -f samples/conditional
+	rm -f samples/variables

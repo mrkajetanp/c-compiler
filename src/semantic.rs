@@ -85,7 +85,17 @@ impl ast::Statement {
         match self {
             Self::Return(exp) => Self::Return(exp.validate(ctx)),
             Self::Exp(exp) => Self::Exp(exp.validate(ctx)),
+            Self::If(cond, then_stmt, else_stmt) => Self::If(
+                cond.validate(ctx),
+                Box::new(then_stmt.validate(ctx)),
+                if let Some(stmt) = else_stmt {
+                    Some(Box::new(stmt.validate(ctx)))
+                } else {
+                    None
+                },
+            ),
             Self::Null => self,
+            // _ => todo!(),
         }
     }
 }
@@ -106,7 +116,13 @@ impl ast::Expression {
             Self::Binary(op, e1, e2) => {
                 Self::Binary(op, Box::new(e1.validate(ctx)), Box::new(e2.validate(ctx)))
             }
-            _ => self,
+            Self::Conditional(cond, then_exp, else_exp) => Self::Conditional(
+                Box::new(cond.validate(ctx)),
+                Box::new(then_exp.validate(ctx)),
+                Box::new(else_exp.validate(ctx)),
+            ),
+            Self::Constant(_) => self,
+            // _ => todo!(),
         }
     }
 }

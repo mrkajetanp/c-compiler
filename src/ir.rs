@@ -126,7 +126,27 @@ impl Instruction {
                 instructions
             }
             Statement::Exp(expr) => Self::generate_from_expr(expr, ctx).0,
+            Statement::If(cond, then_stmt, else_statement) => {
+                let end_label = ctx.label("jump_end");
+                let (mut instructions, cond_val) = Self::generate_from_expr(cond, ctx);
+
+                if let Some(else_stmt) = else_statement {
+                    let else_label = ctx.label("jump_else");
+                    instructions.push(Instruction::JumpIfZero(cond_val, else_label.clone()));
+                    instructions.append(&mut Instruction::generate_from_statement(*then_stmt, ctx));
+                    instructions.push(Instruction::Jump(end_label.clone()));
+                    instructions.push(Instruction::Label(else_label.clone()));
+                    instructions.append(&mut Instruction::generate_from_statement(*else_stmt, ctx));
+                    instructions.push(Instruction::Label(end_label.clone()));
+                } else {
+                    instructions.push(Instruction::JumpIfZero(cond_val, end_label.clone()));
+                    instructions.append(&mut Instruction::generate_from_statement(*then_stmt, ctx));
+                    instructions.push(Instruction::Label(end_label.clone()));
+                }
+                instructions
+            }
             Statement::Null => vec![],
+            // _ => todo!(),
         }
     }
 
@@ -222,6 +242,24 @@ impl Val {
                 instructions.push(Instruction::Copy(right, left.clone()));
                 left
             }
+            ast::Expression::Conditional(cond, then_expr, else_expr) => {
+                let else_label = ctx.label("cond_else");
+                let end_label = ctx.label("cond_end");
+                let result = Self::Var(ctx.temp_var());
+                // Condition
+                let cond_val = Val::generate(*cond, instructions, ctx);
+                instructions.push(Instruction::JumpIfZero(cond_val, else_label.clone()));
+                // then (expr1)
+                let then_val = Val::generate(*then_expr, instructions, ctx);
+                instructions.push(Instruction::Copy(then_val, result.clone()));
+                instructions.push(Instruction::Jump(end_label.clone()));
+                // else (expr2)
+                instructions.push(Instruction::Label(else_label.clone()));
+                let else_val = Val::generate(*else_expr, instructions, ctx);
+                instructions.push(Instruction::Copy(else_val, result.clone()));
+                instructions.push(Instruction::Label(end_label.clone()));
+                result
+            } // _ => todo!(),
         }
     }
 }

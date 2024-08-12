@@ -31,13 +31,15 @@ static NOT_RE: &str = r"!";
 static LESS_THAN_RE: &str = r"<";
 static GREATER_THAN_RE: &str = r">";
 static ASSIGNMENT_RE: &str = r"=";
+static IF_RE: &str = r"if\b";
+static ELSE_RE: &str = r"else\b";
+static QUESTION_RE: &str = r"\?";
+static COLON_RE: &str = r":";
 
 // NOTE: The tokenizer will try tokens in-order based on this list
 // It *must* be ordered longest-match first
 #[derive(EnumIter, EnumIs, Debug, strum_macros::Display, PartialEq, Clone)]
 pub enum TokenKind {
-    Identifier(String),
-    Constant(i64),
     Return,
     Int,
     Void,
@@ -63,6 +65,12 @@ pub enum TokenKind {
     LessThan,
     GreaterThan,
     Assignment,
+    If,
+    Else,
+    Question,
+    Colon,
+    Identifier(String),
+    Constant(i64),
 }
 
 impl TokenKind {
@@ -109,6 +117,10 @@ impl TokenKind {
             input if TokenKind::is_full_match(input, LESS_THAN_RE) => Some(Self::LessThan),
             input if TokenKind::is_full_match(input, GREATER_THAN_RE) => Some(Self::GreaterThan),
             input if TokenKind::is_full_match(input, ASSIGNMENT_RE) => Some(Self::Assignment),
+            input if TokenKind::is_full_match(input, IF_RE) => Some(Self::If),
+            input if TokenKind::is_full_match(input, ELSE_RE) => Some(Self::Else),
+            input if TokenKind::is_full_match(input, QUESTION_RE) => Some(Self::Question),
+            input if TokenKind::is_full_match(input, COLON_RE) => Some(Self::Colon),
             input if TokenKind::is_full_match(input, CONSTANT_RE) => {
                 Some(Self::Constant(input.parse::<i64>().unwrap()))
             }
@@ -148,6 +160,10 @@ impl TokenKind {
             Self::LessEqualThan => Regex::new(LESS_EQUAL_THAN_RE).unwrap(),
             Self::Equal => Regex::new(EQUAL_RE).unwrap(),
             Self::Assignment => Regex::new(ASSIGNMENT_RE).unwrap(),
+            Self::If => Regex::new(IF_RE).unwrap(),
+            Self::Else => Regex::new(ELSE_RE).unwrap(),
+            Self::Question => Regex::new(QUESTION_RE).unwrap(),
+            Self::Colon => Regex::new(COLON_RE).unwrap(),
         }
     }
 
@@ -162,6 +178,7 @@ impl TokenKind {
             &TokenKind::Equal | &TokenKind::NotEqual => 30,
             &TokenKind::And => 10,
             &TokenKind::Or => 5,
+            &TokenKind::Question => 3,
             &TokenKind::Assignment => 1,
             _ => panic!("Token {:?} does not support precedence.", self),
         }
@@ -180,6 +197,7 @@ impl TokenKind {
             | &TokenKind::NotEqual
             | &TokenKind::And
             | &TokenKind::Or
+            | &TokenKind::Question
             | &TokenKind::Assignment
             | &TokenKind::Plus
             | &TokenKind::Minus => true,

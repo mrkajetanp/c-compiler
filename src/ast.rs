@@ -122,7 +122,7 @@ pub struct Declaration {
 
 impl Declaration {
     fn parse(tokens: &mut VecDeque<TokenKind>) -> Self {
-        log::trace!("parsing declaration from {:?}", tokens);
+        log::trace!("Parsing declaration from {:?}", tokens);
         // TODO: actually use the type
         let _ty = expect_token(TokenKind::Int, tokens);
         let ident = Identifier::parse(expect_token(TokenKind::Identifier("".to_owned()), tokens));
@@ -164,6 +164,12 @@ impl DisplayTree for Declaration {
 pub enum Statement {
     Return(#[tree] Expression),
     Exp(#[tree] Expression),
+    If(
+        #[tree] Expression,
+        #[tree] Box<Statement>,
+        // TODO: manually implement DisplayTree
+        #[ignore_field] Option<Box<Statement>>,
+    ),
     Null,
 }
 
@@ -178,15 +184,34 @@ impl Statement {
             return Statement::Null;
         }
 
-        let result = if token.is_return() {
-            expect_token(TokenKind::Return, tokens);
-            let expr = Expression::parse(tokens, 0);
-            Self::Return(expr)
-        } else {
-            Statement::Exp(Expression::parse(tokens, 0))
+        let result = match token {
+            TokenKind::Return => {
+                expect_token(TokenKind::Return, tokens);
+                let expr = Expression::parse(tokens, 0);
+                expect_token(TokenKind::Semicolon, tokens);
+                Self::Return(expr)
+            }
+            TokenKind::If => {
+                expect_token(TokenKind::If, tokens);
+                expect_token(TokenKind::ParenOpen, tokens);
+                let cond = Expression::parse(tokens, 0);
+                expect_token(TokenKind::ParenClose, tokens);
+                let then_stmt = Box::new(Statement::parse(tokens));
+                let else_stmt = if tokens.front().unwrap().is_else() {
+                    expect_token(TokenKind::Else, tokens);
+                    Some(Box::new(Statement::parse(tokens)))
+                } else {
+                    None
+                };
+                Self::If(cond, then_stmt, else_stmt)
+            }
+            _ => {
+                let exp = Self::Exp(Expression::parse(tokens, 0));
+                expect_token(TokenKind::Semicolon, tokens);
+                exp
+            }
         };
 
-        expect_token(TokenKind::Semicolon, tokens);
         log::trace!("-- Parsed stmt {:?}", result);
         result
     }
@@ -204,6 +229,11 @@ pub enum Expression {
         #[tree] Box<Expression>,
     ),
     Assignment(#[tree] Box<Expression>, #[tree] Box<Expression>),
+    Conditional(
+        #[tree] Box<Expression>,
+        #[tree] Box<Expression>,
+        #[tree] Box<Expression>,
+    ),
 }
 
 impl Expression {
@@ -225,6 +255,15 @@ impl Expression {
                 expect_token(TokenKind::Assignment, tokens);
                 let right = Expression::parse(tokens, token.precedence());
                 left = Expression::Assignment(Box::new(left), Box::new(right));
+            } else if token.is_question() {
+                let middle = {
+                    expect_token(TokenKind::Question, tokens);
+                    let cond_middle = Expression::parse(tokens, 0);
+                    expect_token(TokenKind::Colon, tokens);
+                    cond_middle
+                };
+                let right = Expression::parse(tokens, token.precedence());
+                left = Expression::Conditional(Box::new(left), Box::new(middle), Box::new(right));
             } else {
                 let operator = BinaryOperator::parse(tokens);
                 let right = Expression::parse(tokens, token.precedence() + 1);
