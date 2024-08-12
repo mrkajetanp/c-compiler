@@ -371,54 +371,63 @@ impl fmt::Display for Identifier {
 mod tests {
     use super::*;
 
-    // #[test]
-    // fn ir_program() {
-    //     let mut ctx = IrCtx::new();
+    #[test]
+    fn ir_program() {
+        let mut ctx = IrCtx::new();
 
-    //     let ast_program = ast::Program {
-    //         body: ast::Function {
-    //             name: "main".to_owned(),
-    //             return_type: "Int".to_owned(),
-    //             body: todo!(), // ast::Statement::Return(ast::Expression::Unary(
-    //                            //    ast::UnaryOperator::Negation,
-    //                            //    Box::new(ast::Expression::Constant(5)),
-    //         },
-    //     };
+        let ast_program = ast::Program {
+            body: ast::Function {
+                name: ast::Identifier::new("main"),
+                return_type: "Int".to_owned(),
+                body: vec![ast::BlockItem::Stmt(ast::Statement::Return(
+                    ast::Expression::Unary(
+                        ast::UnaryOperator::Negation,
+                        Box::new(ast::Expression::Constant(5)),
+                    ),
+                ))],
+            },
+        };
 
-    //     let expected = Program {
-    //         body: Function::generate(ast_program.body.clone(), &mut ctx),
-    //     };
-    //     let mut ctx = IrCtx::new();
-    //     let actual = Program::generate(ast_program, &mut ctx);
-    //     assert_eq!(actual, expected);
-    // }
+        let expected = Program {
+            body: Function::generate(ast_program.body.clone(), &mut ctx),
+        };
+        let mut ctx = IrCtx::new();
+        let actual = Program::generate(ast_program, &mut ctx);
+        assert_eq!(actual, expected);
+    }
 
-    // #[test]
-    // fn ir_function() {
-    //     let mut ctx = IrCtx::new();
+    #[test]
+    fn ir_function() {
+        let mut ctx = IrCtx::new();
 
-    //     let stmt = ast::Statement::Return(ast::Expression::Unary(
-    //         ast::UnaryOperator::Negation,
-    //         Box::new(ast::Expression::Constant(5)),
-    //     ));
+        let stmt = ast::Statement::Return(ast::Expression::Unary(
+            ast::UnaryOperator::Negation,
+            Box::new(ast::Expression::Constant(5)),
+        ));
 
-    //     let ast_fn = ast::Function {
-    //         name: "main".to_owned(),
-    //         return_type: "Int".to_owned(),
-    //         body: stmt.clone(),
-    //     };
+        let ast_fn = ast::Function {
+            name: ast::Identifier::new("main"),
+            return_type: "Int".to_owned(),
+            body: vec![ast::BlockItem::Stmt(stmt.clone())],
+        };
 
-    //     let expected = Function {
-    //         name: "main".to_owned(),
-    //         return_type: "Int".to_owned(),
-    //         instructions: Instruction::generate_from_statement(stmt, &mut ctx),
-    //     };
+        let expected = Function {
+            name: Identifier::new("main"),
+            return_type: "Int".to_owned(),
+            instructions: vec![
+                Instruction::generate_from_statement(stmt, &mut ctx),
+                vec![Instruction::Return(Val::Constant(0))],
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
+        };
 
-    //     let mut ctx = IrCtx::new();
-    //     let actual = Function::generate(ast_fn, &mut ctx);
+        let mut ctx = IrCtx::new();
+        let actual = Function::generate(ast_fn, &mut ctx);
 
-    //     assert_eq!(actual, expected);
-    // }
+        assert_eq!(actual, expected);
+    }
 
     #[test]
     fn ir_instruction_unary() {
