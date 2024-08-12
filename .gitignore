@@ -1,2 +1,15 @@
+# Ignore all
+samples/*
+
+# Unignore all with extensions
+samples/!*.*
+
+# Unignore all dirs
+samples/!*/
+
+.vim/
+.zed/
+.helix/
+
 /target
 *.i
