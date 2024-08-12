@@ -136,7 +136,7 @@ impl Instruction {
             ir::Instruction::Return(val) => {
                 let src = Operand::from_val(val);
                 let dst = Operand::Reg(Register::AX);
-                instructions.push(Self::Mov(src, dst));
+                instructions.push(Self::Mov(dst, src));
                 instructions.push(Self::Ret);
             }
 
@@ -144,14 +144,14 @@ impl Instruction {
                 let src = Operand::from_val(src);
                 let dst = Operand::from_val(dst);
                 instructions.push(Self::Cmp(Operand::Immediate(0), src));
-                instructions.push(Self::Mov(Operand::Immediate(0), dst.clone()));
+                instructions.push(Self::Mov(dst.clone(), Operand::Immediate(0)));
                 instructions.push(Self::SetCC(CondCode::E, dst));
             }
 
             ir::Instruction::Unary(op, src, dst) => {
                 let src = Operand::from_val(src);
                 let dst = Operand::from_val(dst);
-                instructions.push(Self::Mov(src, dst.clone()));
+                instructions.push(Self::Mov(dst.clone(), src));
                 instructions.push(Self::Unary(UnaryOperator::codegen(op), dst.clone()));
             }
 
@@ -161,7 +161,7 @@ impl Instruction {
                 let dst = Operand::from_val(dst);
                 let cc = CondCode::from_op(op);
                 instructions.push(Self::Cmp(src2, src1));
-                instructions.push(Self::Mov(Operand::Immediate(0), dst.clone()));
+                instructions.push(Self::Mov(dst.clone(), Operand::Immediate(0)));
                 instructions.push(Self::SetCC(cc, dst));
             }
 
@@ -169,15 +169,15 @@ impl Instruction {
                 let src1 = Operand::from_val(src1);
                 let src2 = Operand::from_val(src2);
                 let dst = Operand::from_val(dst);
-                instructions.push(Self::Mov(src1, dst.clone()));
-                instructions.push(Self::Binary(BinaryOperator::codegen(op), src2, dst));
+                instructions.push(Self::Mov(dst.clone(), src1));
+                instructions.push(Self::Binary(BinaryOperator::codegen(op), dst, src2));
             }
 
             ir::Instruction::Binary(op, src1, src2, dst) if op.is_divide() || op.is_remainder() => {
                 let src1 = Operand::from_val(src1);
                 let src2 = Operand::from_val(src2);
                 let dst = Operand::from_val(dst);
-                instructions.push(Self::Mov(src1, Operand::Reg(Register::AX)));
+                instructions.push(Self::Mov(Operand::Reg(Register::AX), src1));
                 instructions.push(Self::Cdq);
                 instructions.push(Self::Idiv(src2));
                 let result_register = if op.is_divide() {
@@ -185,13 +185,13 @@ impl Instruction {
                 } else {
                     Register::DX
                 };
-                instructions.push(Self::Mov(Operand::Reg(result_register), dst));
+                instructions.push(Self::Mov(dst, Operand::Reg(result_register)));
             }
 
             ir::Instruction::Copy(src, dst) => {
                 let src = Operand::from_val(src);
                 let dst = Operand::from_val(dst);
-                instructions.push(Self::Mov(src, dst));
+                instructions.push(Self::Mov(dst, src));
             }
 
             ir::Instruction::Jump(target) => {
@@ -222,19 +222,19 @@ impl Instruction {
         stack_addrs: &mut HashMap<String, i64>,
     ) -> Self {
         match self {
-            Instruction::Mov(src, dst) => {
+            Instruction::Mov(dst, src) => {
                 let src = src.replace_pseudo(stack_pos, stack_addrs);
                 let dst = dst.replace_pseudo(stack_pos, stack_addrs);
-                Instruction::Mov(src, dst)
+                Instruction::Mov(dst, src)
             }
             Instruction::Unary(op, dst) => {
                 let dst = dst.replace_pseudo(stack_pos, stack_addrs);
                 Instruction::Unary(op, dst)
             }
-            Instruction::Binary(op, src, dst) => {
+            Instruction::Binary(op, dst, src) => {
                 let src = src.replace_pseudo(stack_pos, stack_addrs);
                 let dst = dst.replace_pseudo(stack_pos, stack_addrs);
-                Instruction::Binary(op, src, dst)
+                Instruction::Binary(op, dst, src)
             }
             Instruction::Idiv(src) => {
                 let src = src.replace_pseudo(stack_pos, stack_addrs);
@@ -260,33 +260,33 @@ impl Instruction {
 
     pub fn fixup(self) -> Vec<Instruction> {
         match self {
-            Instruction::Mov(src, dst) if src.is_stack() && dst.is_stack() => vec![
-                Instruction::Mov(src, Operand::Reg(Register::R10)),
-                Instruction::Mov(Operand::Reg(Register::R10), dst),
+            Instruction::Mov(dst, src) if src.is_stack() && dst.is_stack() => vec![
+                Instruction::Mov(Operand::Reg(Register::R10), src),
+                Instruction::Mov(dst, Operand::Reg(Register::R10)),
             ],
-            Instruction::Binary(op, src, dst)
+            Instruction::Binary(op, dst, src)
                 if (op.is_add() || op.is_sub()) && src.is_stack() && dst.is_stack() =>
             {
                 vec![
-                    Instruction::Mov(src, Operand::Reg(Register::R10)),
-                    Instruction::Binary(op, Operand::Reg(Register::R10), dst),
+                    Instruction::Mov(Operand::Reg(Register::R10), src),
+                    Instruction::Binary(op, dst, Operand::Reg(Register::R10)),
                 ]
             }
-            Instruction::Binary(op, src, dst) if op.is_mult() && dst.is_stack() => vec![
-                Instruction::Mov(dst.clone(), Operand::Reg(Register::R11)),
-                Instruction::Binary(op, src, Operand::Reg(Register::R11)),
-                Instruction::Mov(Operand::Reg(Register::R11), dst),
+            Instruction::Binary(op, dst, src) if op.is_mult() && dst.is_stack() => vec![
+                Instruction::Mov(Operand::Reg(Register::R11), dst.clone()),
+                Instruction::Binary(op, Operand::Reg(Register::R11), src),
+                Instruction::Mov(dst, Operand::Reg(Register::R11)),
             ],
             Instruction::Idiv(src) if src.is_immediate() => vec![
-                Instruction::Mov(src, Operand::Reg(Register::R10)),
+                Instruction::Mov(Operand::Reg(Register::R10), src),
                 Instruction::Idiv(Operand::Reg(Register::R10)),
             ],
             Instruction::Cmp(op1, op2) if op1.is_stack() && op2.is_stack() => vec![
-                Instruction::Mov(op1, Operand::Reg(Register::R10)),
+                Instruction::Mov(Operand::Reg(Register::R10), op1),
                 Instruction::Cmp(Operand::Reg(Register::R10), op2),
             ],
             Instruction::Cmp(op1, op2) if op2.is_immediate() => vec![
-                Instruction::Mov(op2, Operand::Reg(Register::R11)),
+                Instruction::Mov(Operand::Reg(Register::R11), op2),
                 Instruction::Cmp(op1, Operand::Reg(Register::R11)),
             ],
             _ => vec![self],
@@ -308,10 +308,10 @@ impl Instruction {
                 result.push_str(&format!("\t{}", "ret"));
                 result
             }
-            Self::Mov(src, dst) => format!("mov {}, {}", dst.emit_4b(), src.emit_4b()),
+            Self::Mov(dst, src) => format!("mov {}, {}", dst.emit_4b(), src.emit_4b()),
             Self::Unary(operator, operand) => format!("{} {}", operator.emit(), operand.emit_4b()),
             Self::Binary(operator, op1, op2) => {
-                format!("{} {}, {}", operator.emit(), op2.emit_4b(), op1.emit_4b())
+                format!("{} {}, {}", operator.emit(), op1.emit_4b(), op2.emit_4b())
             }
             Self::Idiv(operand) => format!("idiv {}", operand.emit_4b()),
             Self::Cdq => format!("cdq"),
@@ -329,7 +329,7 @@ impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let result = match self {
             Self::Ret => format!("<epilogue>"),
-            Self::Mov(src, dst) => format!("mov {}, {}", dst, src),
+            Self::Mov(dst, src) => format!("mov {}, {}", dst, src),
             Self::Unary(operator, operand) => format!("{} {}", operator, operand),
             Self::Binary(operator, op1, op2) => format!("{} {}, {}", operator, op1, op2),
             Self::Idiv(operand) => format!("div {}", operand),
