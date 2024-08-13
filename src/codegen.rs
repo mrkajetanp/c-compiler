@@ -22,7 +22,7 @@ impl Program {
 
         result.push_str(&format!(".intel_syntax noprefix\n\n"));
         result.push_str(&self.body.emit());
-        result.push_str(".section .note.GNU-stack,\"\",@progbits\n");
+        result.push_str("\n\n.section .note.GNU-stack,\"\",@progbits\n");
         result.push_str(&format!(".globl {}\n", self.body.name));
 
         result
@@ -294,34 +294,42 @@ impl Instruction {
     }
 
     pub fn emit(&self) -> String {
-        fn format_instr(instr: &str) -> String {
+        #[inline(always)]
+        fn format_instr(instr: String) -> String {
             format!("\t{}\n", instr)
         }
 
-        format_instr(&match self {
+        match self {
             Self::Ret => {
                 let mut result = String::new();
-                // TODO: slightly awkward, to be fixed at some point
-                // format_instr will wrap whatever the match returns in \t and \n
-                result.push_str(&format!("{}\n", "mov rsp, rbp"));
-                result.push_str(&format_instr("pop rbp"));
-                result.push_str(&format!("\t{}", "ret"));
+                result.push_str(&format!("\n\tmov rsp, rbp\n"));
+                result.push_str(&format_instr("pop rbp".to_owned()));
+                result.push_str(&format_instr("ret".to_owned()));
                 result
             }
-            Self::Mov(dst, src) => format!("mov {}, {}", dst.emit_4b(), src.emit_4b()),
-            Self::Unary(operator, operand) => format!("{} {}", operator.emit(), operand.emit_4b()),
-            Self::Binary(operator, op1, op2) => {
-                format!("{} {}, {}", operator.emit(), op1.emit_4b(), op2.emit_4b())
+            Self::Mov(dst, src) => {
+                format_instr(format!("mov {}, {}", dst.emit_4b(), src.emit_4b()))
             }
-            Self::Idiv(operand) => format!("idiv {}", operand.emit_4b()),
-            Self::Cdq => format!("cdq"),
-            Self::AllocateStack(val) => format!("sub rsp, {}", val),
-            Self::Cmp(a, b) => format!("cmp {}, {}", a.emit_4b(), b.emit_4b()),
-            Self::Jmp(label) => format!("jmp .L{}", label),
-            Self::JmpCC(cc, label) => format!("j{} .L{}", cc.emit(), label),
-            Self::SetCC(cc, operand) => format!("set{} {}", cc.emit(), operand.emit_1b()),
-            Self::Label(label) => format!(".L{}:", label),
-        })
+            Self::Unary(operator, operand) => {
+                format_instr(format!("{} {}", operator.emit(), operand.emit_4b()))
+            }
+            Self::Binary(operator, op1, op2) => format_instr(format!(
+                "{} {}, {}",
+                operator.emit(),
+                op1.emit_4b(),
+                op2.emit_4b()
+            )),
+            Self::Idiv(operand) => format_instr(format!("idiv {}", operand.emit_4b())),
+            Self::Cdq => format_instr(format!("cdq")),
+            Self::AllocateStack(val) => format_instr(format!("sub rsp, {}\n", val)),
+            Self::Cmp(a, b) => format_instr(format!("cmp {}, {}", a.emit_4b(), b.emit_4b())),
+            Self::Jmp(label) => format_instr(format!("jmp .L{}\n\n", label)),
+            Self::JmpCC(cc, label) => format_instr(format!("j{} .L{}\n", cc.emit(), label)),
+            Self::SetCC(cc, operand) => {
+                format_instr(format!("set{} {}", cc.emit(), operand.emit_1b()))
+            }
+            Self::Label(label) => format!(".L{}:\n", label),
+        }
     }
 }
 
@@ -468,7 +476,7 @@ impl Operand {
         match self {
             Self::Reg(reg) => reg.emit_4b(),
             Self::Immediate(val) => format!("{}", val),
-            Self::Stack(val) => format!("DWORD PTR [rbp{}]", val),
+            Self::Stack(val) => format!("dword ptr [rbp{}]", val),
             Self::Pseudo(_) => panic!("Fatal error: Pseudo-operand in emit stage"),
         }
     }
@@ -615,7 +623,7 @@ mod tests {
             expected.push_str("main:\n\tpush rbp\n\tmov rbp, rsp\n");
             expected.push_str(&Instruction::AllocateStack(4).emit());
             expected.push_str(&Instruction::Ret.emit());
-            expected.push_str(".section .note.GNU-stack,\"\",@progbits\n");
+            expected.push_str("\n\n.section .note.GNU-stack,\"\",@progbits\n");
             expected.push_str(&format!(".globl {}\n", "main"));
 
             assert_eq!(expected, actual);
@@ -641,7 +649,7 @@ mod tests {
         #[test]
         fn instruction_allocate_stack() {
             let actual = Instruction::AllocateStack(4).emit();
-            let expected = "\tsub rsp, 4\n";
+            let expected = "\tsub rsp, 4\n\n";
             assert_eq!(expected, actual);
         }
 
@@ -655,14 +663,14 @@ mod tests {
         #[test]
         fn instruction_ret() {
             let actual = Instruction::Ret.emit();
-            let expected = "\tmov rsp, rbp\n\tpop rbp\n\tret\n";
+            let expected = "\n\tmov rsp, rbp\n\tpop rbp\n\tret\n";
             assert_eq!(expected, actual);
         }
 
         #[test]
         fn instruction_mov() {
             let actual = Instruction::Mov(Operand::Stack(-4), Operand::Immediate(5)).emit();
-            let expected = "\tmov DWORD PTR [rbp-4], 5\n";
+            let expected = "\tmov dword ptr [rbp-4], 5\n";
             assert_eq!(expected, actual);
         }
 
@@ -684,7 +692,7 @@ mod tests {
             assert_eq!("5", op.emit_4b());
 
             let op = Operand::Stack(-4);
-            assert_eq!("DWORD PTR [rbp-4]", op.emit_4b());
+            assert_eq!("dword ptr [rbp-4]", op.emit_4b());
         }
 
         #[test]
