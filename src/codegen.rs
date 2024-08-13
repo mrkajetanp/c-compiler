@@ -143,7 +143,7 @@ impl Instruction {
             ir::Instruction::Unary(op, src, dst) if op.is_not() => {
                 let src = Operand::from_val(src);
                 let dst = Operand::from_val(dst);
-                instructions.push(Self::Cmp(Operand::Immediate(0), src));
+                instructions.push(Self::Cmp(src, Operand::Immediate(0)));
                 instructions.push(Self::Mov(dst.clone(), Operand::Immediate(0)));
                 instructions.push(Self::SetCC(CondCode::E, dst));
             }
@@ -160,7 +160,7 @@ impl Instruction {
                 let src2 = Operand::from_val(src2);
                 let dst = Operand::from_val(dst);
                 let cc = CondCode::from_op(op);
-                instructions.push(Self::Cmp(src2, src1));
+                instructions.push(Self::Cmp(src1, src2));
                 instructions.push(Self::Mov(dst.clone(), Operand::Immediate(0)));
                 instructions.push(Self::SetCC(cc, dst));
             }
@@ -202,12 +202,12 @@ impl Instruction {
             }
             ir::Instruction::JumpIfZero(cond, target) => {
                 let cond = Operand::from_val(cond);
-                instructions.push(Self::Cmp(Operand::Immediate(0), cond));
+                instructions.push(Self::Cmp(cond, Operand::Immediate(0)));
                 instructions.push(Self::JmpCC(CondCode::E, Identifier::codegen(target)));
             }
             ir::Instruction::JumpIfNotZero(cond, target) => {
                 let cond = Operand::from_val(cond);
-                instructions.push(Self::Cmp(Operand::Immediate(0), cond));
+                instructions.push(Self::Cmp(cond, Operand::Immediate(0)));
                 instructions.push(Self::JmpCC(CondCode::NE, Identifier::codegen(target)));
             }
             _ => panic!("Unexpected IR instruction in codegen"),
@@ -282,12 +282,12 @@ impl Instruction {
                 Instruction::Idiv(Operand::Reg(Register::R10)),
             ],
             Instruction::Cmp(op1, op2) if op1.is_stack() && op2.is_stack() => vec![
-                Instruction::Mov(Operand::Reg(Register::R10), op1),
-                Instruction::Cmp(Operand::Reg(Register::R10), op2),
+                Instruction::Mov(Operand::Reg(Register::R10), op2),
+                Instruction::Cmp(op1, Operand::Reg(Register::R10)),
             ],
-            Instruction::Cmp(op1, op2) if op2.is_immediate() => vec![
-                Instruction::Mov(Operand::Reg(Register::R11), op2),
-                Instruction::Cmp(op1, Operand::Reg(Register::R11)),
+            Instruction::Cmp(op1, op2) if op1.is_immediate() => vec![
+                Instruction::Mov(Operand::Reg(Register::R11), op1),
+                Instruction::Cmp(Operand::Reg(Register::R11), op2),
             ],
             _ => vec![self],
         }
@@ -316,7 +316,7 @@ impl Instruction {
             Self::Idiv(operand) => format!("idiv {}", operand.emit_4b()),
             Self::Cdq => format!("cdq"),
             Self::AllocateStack(val) => format!("sub rsp, {}", val),
-            Self::Cmp(a, b) => format!("cmp {}, {}", b.emit_4b(), a.emit_4b()),
+            Self::Cmp(a, b) => format!("cmp {}, {}", a.emit_4b(), b.emit_4b()),
             Self::Jmp(label) => format!("jmp .L{}", label),
             Self::JmpCC(cc, label) => format!("j{} .L{}", cc.emit(), label),
             Self::SetCC(cc, operand) => format!("set{} {}", cc.emit(), operand.emit_1b()),
