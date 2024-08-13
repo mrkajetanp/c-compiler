@@ -611,7 +611,8 @@ mod tests {
             .emit();
 
             let mut expected = String::new();
-            expected.push_str("main:\n\tpushq %rbp\n\tmovq %rsp, %rbp\n");
+            expected.push_str(".intel_syntax noprefix\n\n");
+            expected.push_str("main:\n\tpush rbp\n\tmov rbp, rsp\n");
             expected.push_str(&Instruction::AllocateStack(4).emit());
             expected.push_str(&Instruction::Ret.emit());
             expected.push_str(".section .note.GNU-stack,\"\",@progbits\n");
@@ -630,7 +631,7 @@ mod tests {
             .emit();
 
             let mut expected = String::new();
-            expected.push_str("main:\n\tpushq %rbp\n\tmovq %rsp, %rbp\n");
+            expected.push_str("main:\n\tpush rbp\n\tmov rbp, rsp\n");
             expected.push_str(&Instruction::AllocateStack(4).emit());
             expected.push_str(&Instruction::Ret.emit());
 
@@ -640,50 +641,50 @@ mod tests {
         #[test]
         fn instruction_allocate_stack() {
             let actual = Instruction::AllocateStack(4).emit();
-            let expected = "\tsubq $4, %rsp\n";
+            let expected = "\tsub rsp, 4\n";
             assert_eq!(expected, actual);
         }
 
         #[test]
         fn instruction_unary() {
             let actual = Instruction::Unary(UnaryOperator::Neg, Operand::Immediate(5)).emit();
-            let expected = "\tnegl $5\n";
+            let expected = "\tneg 5\n";
             assert_eq!(expected, actual);
         }
 
         #[test]
         fn instruction_ret() {
             let actual = Instruction::Ret.emit();
-            let expected = "\tmovq %rbp, %rsp\n\tpopq %rbp\n\tret\n";
+            let expected = "\tmov rsp, rbp\n\tpop rbp\n\tret\n";
             assert_eq!(expected, actual);
         }
 
         #[test]
         fn instruction_mov() {
-            let actual = Instruction::Mov(Operand::Immediate(5), Operand::Stack(-4)).emit();
-            let expected = "\tmovl $5, -4(%rbp)\n";
+            let actual = Instruction::Mov(Operand::Stack(-4), Operand::Immediate(5)).emit();
+            let expected = "\tmov DWORD PTR [rbp-4], 5\n";
             assert_eq!(expected, actual);
         }
 
         #[test]
         fn unary_operator() {
             let op = UnaryOperator::Neg;
-            assert_eq!("negl", op.emit());
+            assert_eq!("neg", op.emit());
 
             let op = UnaryOperator::Not;
-            assert_eq!("notl", op.emit());
+            assert_eq!("not", op.emit());
         }
 
         #[test]
         fn operand() {
             let op = Operand::Reg(Register::AX);
-            assert_eq!("%eax", op.emit_4b());
+            assert_eq!("eax", op.emit_4b());
 
             let op = Operand::Immediate(5);
-            assert_eq!("$5", op.emit_4b());
+            assert_eq!("5", op.emit_4b());
 
             let op = Operand::Stack(-4);
-            assert_eq!("-4(%rbp)", op.emit_4b());
+            assert_eq!("DWORD PTR [rbp-4]", op.emit_4b());
         }
 
         #[test]
@@ -695,10 +696,10 @@ mod tests {
         #[test]
         fn register() {
             let reg = Register::AX;
-            assert_eq!("%eax", reg.emit_4b());
+            assert_eq!("eax", reg.emit_4b());
 
             let reg = Register::R10;
-            assert_eq!("%r10d", reg.emit_4b());
+            assert_eq!("r10d", reg.emit_4b());
         }
     }
 
@@ -747,9 +748,9 @@ mod tests {
             name: Identifier::new("main"),
             instructions: vec![
                 Instruction::AllocateStack(4),
-                Instruction::Mov(Operand::Immediate(5), Operand::Stack(-4)),
+                Instruction::Mov(Operand::Stack(-4), Operand::Immediate(5)),
                 Instruction::Unary(UnaryOperator::Neg, Operand::Stack(-4)),
-                Instruction::Mov(Operand::Stack(-4), Operand::Reg(Register::AX)),
+                Instruction::Mov(Operand::Reg(Register::AX), Operand::Stack(-4)),
                 Instruction::Ret,
             ],
             stack_pos: -4,
@@ -772,7 +773,7 @@ mod tests {
         .map(|instr| instr.replace_pseudo(&mut stack_pos, &mut stack_addrs))
         .collect();
         let expected = vec![
-            Instruction::Mov(Operand::Immediate(5), Operand::Stack(-4)),
+            Instruction::Mov(Operand::Stack(-4), Operand::Immediate(5)),
             Instruction::Unary(UnaryOperator::Neg, Operand::Stack(-4)),
         ];
         assert_eq!(actual, expected);
@@ -782,7 +783,7 @@ mod tests {
     fn instruction_return() {
         let actual = Instruction::codegen(ir::Instruction::Return(ir::Val::Constant(5)));
         let expected = vec![
-            Instruction::Mov(Operand::Immediate(5), Operand::Reg(Register::AX)),
+            Instruction::Mov(Operand::Reg(Register::AX), Operand::Immediate(5)),
             Instruction::Ret,
         ];
         assert_eq!(actual, expected);
