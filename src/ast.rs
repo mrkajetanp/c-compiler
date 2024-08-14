@@ -5,6 +5,7 @@ use std::fmt;
 use std::mem::discriminant;
 use strum_macros::{Display, EnumIs};
 
+#[inline(always)]
 fn expect_token(expected: TokenKind, tokens: &mut VecDeque<TokenKind>) -> TokenKind {
     let exp = discriminant(&expected);
     let actual = discriminant(&tokens[0]);
@@ -42,30 +43,13 @@ impl Program {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, DisplayTree)]
 #[allow(dead_code)]
 pub struct Function {
     pub name: Identifier,
     pub return_type: String,
-    pub body: Vec<BlockItem>,
-}
-
-impl DisplayTree for Function {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>, style: display_tree::Style) -> std::fmt::Result {
-        writeln!(f, "{} {}", self.return_type, self.name)?;
-        for block in &self.body {
-            writeln!(
-                f,
-                "{}{} {}",
-                style.char_set.connector,
-                std::iter::repeat(style.char_set.horizontal)
-                    .take(style.indentation as usize)
-                    .collect::<String>(),
-                display_tree::format_tree!(*block)
-            )?;
-        }
-        Ok(())
-    }
+    #[tree]
+    pub body: Block,
 }
 
 impl Function {
@@ -77,19 +61,52 @@ impl Function {
         expect_token(TokenKind::ParenOpen, tokens);
         expect_token(TokenKind::Void, tokens);
         expect_token(TokenKind::ParenClose, tokens);
-        expect_token(TokenKind::BraceOpen, tokens);
 
-        let mut body = vec![];
-        while !tokens.front().unwrap().to_owned().is_brace_close() {
-            body.push(BlockItem::parse(tokens));
-        }
-        expect_token(TokenKind::BraceClose, tokens);
+        let body = Block::parse(tokens);
 
         Function {
             name,
             return_type: return_type.to_string(),
             body,
         }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+#[allow(dead_code)]
+pub struct Block {
+    pub body: Vec<BlockItem>,
+}
+
+impl Block {
+    fn parse(tokens: &mut VecDeque<TokenKind>) -> Self {
+        expect_token(TokenKind::BraceOpen, tokens);
+
+        let mut body = vec![];
+        while !tokens.front().unwrap().to_owned().is_brace_close() {
+            body.push(BlockItem::parse(tokens));
+        }
+
+        expect_token(TokenKind::BraceClose, tokens);
+
+        Block { body }
+    }
+}
+
+impl DisplayTree for Block {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>, style: display_tree::Style) -> std::fmt::Result {
+        for basic_block in &self.body {
+            writeln!(
+                f,
+                "{}{} {}",
+                style.char_set.connector,
+                std::iter::repeat(style.char_set.horizontal)
+                    .take(style.indentation as usize)
+                    .collect::<String>(),
+                display_tree::format_tree!(*basic_block)
+            )?;
+        }
+        Ok(())
     }
 }
 
@@ -170,6 +187,7 @@ pub enum Statement {
         // TODO: manually implement DisplayTree
         #[ignore_field] Option<Box<Statement>>,
     ),
+    Compound(#[tree] Block),
     Null,
 }
 
@@ -204,6 +222,10 @@ impl Statement {
                     None
                 };
                 Self::If(cond, then_stmt, else_stmt)
+            }
+            TokenKind::BraceOpen => {
+                let block = Block::parse(tokens);
+                Self::Compound(block)
             }
             _ => {
                 let exp = Self::Exp(Expression::parse(tokens, 0));
@@ -430,7 +452,9 @@ mod tests {
         let function_expected = Function {
             name: Identifier::new("main"),
             return_type: "Int".to_owned(),
-            body: vec![BlockItem::Stmt(Statement::Return(Expression::Constant(7)))],
+            body: Block {
+                body: vec![BlockItem::Stmt(Statement::Return(Expression::Constant(7)))],
+            },
         };
 
         let program_expected = Program {
@@ -458,7 +482,9 @@ mod tests {
         let function_expected = Function {
             name: Identifier::new("main"),
             return_type: "Int".to_owned(),
-            body: vec![BlockItem::Stmt(Statement::Return(Expression::Constant(6)))],
+            body: Block {
+                body: vec![BlockItem::Stmt(Statement::Return(Expression::Constant(6)))],
+            },
         };
 
         assert_eq!(Function::parse(&mut tokens), function_expected);

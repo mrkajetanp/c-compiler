@@ -1,3 +1,5 @@
+#![feature(let_chains)]
+
 use display_tree::format_tree;
 use std::fs;
 use std::io::{Error, Write};

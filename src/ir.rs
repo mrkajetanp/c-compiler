@@ -76,10 +76,8 @@ impl Function {
         Function {
             name: Identifier::generate(function.name),
             return_type: function.return_type,
-            instructions: function
-                .body
+            instructions: Instruction::generate_from_block(function.body, ctx)
                 .into_iter()
-                .flat_map(|block| Instruction::generate_from_block(block, ctx))
                 // Implicit return 0 at the end of each function
                 .chain([Instruction::Return(Val::Constant(0))])
                 .collect(),
@@ -101,8 +99,16 @@ pub enum Instruction {
 }
 
 impl Instruction {
-    pub fn generate_from_block(block: ast::BlockItem, ctx: &mut IrCtx) -> Vec<Self> {
-        match block {
+    pub fn generate_from_block(block: ast::Block, ctx: &mut IrCtx) -> Vec<Self> {
+        block
+            .body
+            .into_iter()
+            .flat_map(|block| Instruction::generate_from_basic_block(block, ctx))
+            .collect()
+    }
+
+    pub fn generate_from_basic_block(basic_block: ast::BlockItem, ctx: &mut IrCtx) -> Vec<Self> {
+        match basic_block {
             ast::BlockItem::Stmt(statement) => Self::generate_from_statement(statement, ctx),
             ast::BlockItem::Decl(declaration) => Self::generate_from_declaration(declaration, ctx),
         }
@@ -145,6 +151,7 @@ impl Instruction {
                 }
                 instructions
             }
+            Statement::Compound(block) => Self::generate_from_block(block, ctx),
             Statement::Null => vec![],
             // _ => todo!(),
         }
@@ -417,12 +424,14 @@ mod tests {
             body: ast::Function {
                 name: ast::Identifier::new("main"),
                 return_type: "Int".to_owned(),
-                body: vec![ast::BlockItem::Stmt(ast::Statement::Return(
-                    ast::Expression::Unary(
-                        ast::UnaryOperator::Negation,
-                        Box::new(ast::Expression::Constant(5)),
-                    ),
-                ))],
+                body: ast::Block {
+                    body: vec![ast::BlockItem::Stmt(ast::Statement::Return(
+                        ast::Expression::Unary(
+                            ast::UnaryOperator::Negation,
+                            Box::new(ast::Expression::Constant(5)),
+                        ),
+                    ))],
+                },
             },
         };
 
@@ -446,7 +455,9 @@ mod tests {
         let ast_fn = ast::Function {
             name: ast::Identifier::new("main"),
             return_type: "Int".to_owned(),
-            body: vec![ast::BlockItem::Stmt(stmt.clone())],
+            body: ast::Block {
+                body: vec![ast::BlockItem::Stmt(stmt.clone())],
+            },
         };
 
         let expected = Function {

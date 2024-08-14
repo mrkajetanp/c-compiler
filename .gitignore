@@ -1,11 +1,9 @@
 # Ignore all
 samples/*
-
 # Unignore all with extensions
-samples/!*.*
-
+!samples/*.*
 # Unignore all dirs
-samples/!*/
+!samples/*/
 
 .vim/
 .zed/

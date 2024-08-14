@@ -3,12 +3,14 @@ AST Definition
 ==========================
 
 program = Program(function_definition)
-function_definition = Function(identifier name, block_item* body)
+function_definition = Function(identifier name, block body)
+block = Block(block_item*)
 block_item = S(statement) | D(declaration)
 declaration = Declaration(identifier name, exp? init)
 statement = Return(exp)
 		| Expression(exp)
 		| If(exp condition, statement then, statement? else)
+		| Compound(block)
 		| Null
 exp = Constant(int)
 		| Var(identifier)
@@ -25,12 +27,14 @@ Grammar
 ==========================
 
 <program> ::= <function>
-<function> ::= "int" <identifier> "(" "void" ")" "{" {<block-item>} "}"
+<function> ::= "int" <identifier> "(" "void" ")" <block>
+<block> ::= "{" {<block-item>} "}"
 <block-item> ::= <statement> | <declaration>
 <declaration> ::= "int" <identifier> ["=" <exp>] ";"
 <statement> ::= "return" <exp> ";"
 		 | <exp> ";"
 		 | "if" "(" <exp> ")" <statement> ["else" <statement>]
+		 | <block>
  		 | ";" 
 <exp> ::= <factor> | <exp> <binop> <exp> | <exp> "?" <exp> ":" <exp>
 <factor> ::= <int> | <identifier> | <unop> <factor> | "(" <exp> ")"
