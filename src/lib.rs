@@ -1,10 +1,12 @@
 #![feature(let_chains)]
 
 use display_tree::format_tree;
+use lliw::Fg;
 use std::fs;
 use std::io::{Error, Write};
 use std::process::Command;
 use strum::EnumIs;
+use synoptic;
 
 pub mod ast;
 pub mod codegen;
@@ -138,12 +140,47 @@ impl Driver {
     fn emit(&self, code: codegen::Program) -> Result<String, Error> {
         let output_path = format!("{}.s", self.name);
         let asm = code.emit();
-        log::debug!("Emitted assembly:\n\n{}", asm);
+
+        if log::log_enabled!(log::Level::Debug) {
+            Driver::print_asm_with_highlight(&asm);
+        }
 
         let mut file = fs::File::create(&output_path)?;
         file.write_all(asm.as_bytes())?;
 
         Ok(output_path)
+    }
+
+    fn print_asm_with_highlight(asm: &str) {
+        fn colour(name: &str) -> Fg {
+            match name {
+                "comment" => Fg::LightBlack,
+                "digit" => Fg::Purple,
+                "string" => Fg::Green,
+                "keyword" => Fg::Yellow,
+                "function" => Fg::Red,
+                _ => panic!("unknown token name"),
+            }
+        }
+
+        let mut highlight = synoptic::from_extension("asm", 4).unwrap();
+        let highlighted_asm = asm.split('\n').map(|line| line.to_string()).collect();
+        highlight.run(&highlighted_asm);
+
+        for (line_number, line) in highlighted_asm.iter().enumerate() {
+            print!("{}\t", line_number + 1);
+            // Line returns tokens for the corresponding line
+            for token in highlight.line(line_number, &line) {
+                // Tokens can either require highlighting or not require highlighting
+                match token {
+                    synoptic::TokOpt::Some(text, kind) => {
+                        print!("{}{text}{}", colour(&kind), Fg::Reset)
+                    }
+                    synoptic::TokOpt::None(text) => print!("{text}"),
+                }
+            }
+            println!();
+        }
     }
 
     fn assemble(&self, path: &str) {

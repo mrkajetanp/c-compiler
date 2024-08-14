@@ -23,3 +23,5 @@ strum = { version = "0.26.3", features = ["derive"] }
 strum_macros = "0.26.4"
 llvm-sys = { version = "180", features = ["prefer-dynamic"], optional = true }
 cfg-if = "1.0.0"
+synoptic = "2.0.4"
+lliw = "0.2.0"
