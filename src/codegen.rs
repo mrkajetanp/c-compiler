@@ -31,8 +31,7 @@ impl Program {
 
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Program:\n").unwrap();
-        write!(f, "{}", self.body)
+        write!(f, "{}", self.emit())
     }
 }
 
@@ -103,11 +102,7 @@ impl Function {
 
 impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}: # ({})\n", self.name, self.stack_pos).unwrap();
-        for instr in &self.instructions {
-            write!(f, "\t{}\n", instr).unwrap();
-        }
-        Ok(())
+        write!(f, "{}", self.emit())
     }
 }
 
@@ -335,22 +330,7 @@ impl Instruction {
 
 impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let result = match self {
-            Self::Ret => format!("<epilogue>"),
-            Self::Mov(dst, src) => format!("mov {}, {}", dst, src),
-            Self::Unary(operator, operand) => format!("{} {}", operator, operand),
-            Self::Binary(operator, op1, op2) => format!("{} {}, {}", operator, op1, op2),
-            Self::Idiv(operand) => format!("div {}", operand),
-            Self::Cdq => format!("cdq"),
-            Self::AllocateStack(val) => format!("<prologue stack -{}>", val),
-            Self::Cmp(op1, op2) => format!("cmp {}, {}", op1, op2),
-            Self::Jmp(ident) => format!("jmp {}", ident),
-            Self::JmpCC(cc, ident) => format!("jmp{} {}", cc, ident),
-            Self::SetCC(cc, val) => format!("set{} {}", cc, val),
-            Self::Label(ident) => format!(":{}", ident),
-        };
-
-        write!(f, "{}", result)
+        write!(f, "{}", self.emit())
     }
 }
 
@@ -384,12 +364,7 @@ impl BinaryOperator {
 
 impl fmt::Display for BinaryOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let result = match self {
-            &BinaryOperator::Add => "add",
-            &BinaryOperator::Sub => "sub",
-            &BinaryOperator::Mult => "mul",
-        };
-        write!(f, "{}", result)
+        write!(f, "{}", self.emit())
     }
 }
 
@@ -420,11 +395,7 @@ impl UnaryOperator {
 
 impl fmt::Display for UnaryOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let result = match self {
-            UnaryOperator::Neg => "neg",
-            UnaryOperator::Not => "not",
-        };
-        write!(f, "{}", result)
+        write!(f, "{}", self.emit())
     }
 }
 
@@ -484,21 +455,9 @@ impl Operand {
     pub fn emit_1b(&self) -> String {
         match self {
             Self::Reg(reg) => reg.emit_1b(),
-            Self::Stack(val) => format!("BYTE PTR [rbp{}]", val),
+            Self::Stack(val) => format!("byte ptr [rbp{}]", val),
             _ => self.emit_4b(),
         }
-    }
-}
-
-impl fmt::Display for Operand {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let result = match self {
-            Self::Reg(reg) => format!("{}", reg),
-            Self::Immediate(val) => format!("{}", val),
-            Self::Stack(val) => format!("[rbp{}]", val),
-            Self::Pseudo(name) => format!("<{}>", name),
-        };
-        write!(f, "{}", result)
     }
 }
 
@@ -528,18 +487,6 @@ impl Register {
             Self::R10 => format!("r10b"),
             Self::R11 => format!("r11b"),
         }
-    }
-}
-
-impl fmt::Display for Register {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let result = match self {
-            &Register::AX => "ax",
-            &Register::DX => "dx",
-            &Register::R10 => "r10",
-            &Register::R11 => "r11",
-        };
-        write!(f, "{}", result)
     }
 }
 

@@ -98,7 +98,7 @@ impl Driver {
         }
 
         let code = self.codegen(ir);
-        log::debug!("Codegen:\n{}\n", &code);
+        log::trace!("Codegen:\n{}\n", &code);
 
         if stage.is_codegen() {
             return None;
