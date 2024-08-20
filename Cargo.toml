@@ -1,15 +1,11 @@
 [package]
-name = "c-compiler"
+name = "rcc"
 version = "0.1.0"
 edition = "2021"
 
 [features]
 # Enable the LLVM codegen backend
 llvm = ["llvm-sys"]
-
-[[bin]]
-name = "rcc"
-path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.5.11", features = ["derive"] }

@@ -1,7 +1,7 @@
 use clap::Parser;
 use log::LevelFilter;
 
-use c_compiler::*;
+use rcc::*;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]

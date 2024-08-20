@@ -1,6 +1,6 @@
-extern crate c_compiler;
+extern crate rcc;
 
-use c_compiler::*;
+use rcc::*;
 use serial_test::serial;
 
 static BASIC_SAMPLE: &str = "samples/basic.c";
@@ -103,4 +103,3 @@ fn div_full() {
     driver.compile(CompileStage::Full, true);
     driver.clean_binary().unwrap();
 }
-

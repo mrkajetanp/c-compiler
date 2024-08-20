@@ -1,9 +1,9 @@
-extern crate c_compiler;
+extern crate rcc;
 
-use c_compiler::*;
-use std::fs;
-use c_compiler::lexer::TokenKind;
+use rcc::lexer::TokenKind;
+use rcc::*;
 use serial_test::serial;
+use std::fs;
 
 static BASIC_SAMPLE: &str = "samples/basic.c";
 static UNARY_SAMPLE: &str = "samples/unary.c";
@@ -16,10 +16,16 @@ fn test_basic_lex() {
     let source = fs::read_to_string(preprocessed_path).unwrap();
 
     let tokens_expected: Vec<TokenKind> = vec![
-        TokenKind::Int, TokenKind::Identifier("main".to_owned()),
-        TokenKind::ParenOpen, TokenKind::Void, TokenKind::ParenClose,
-        TokenKind::BraceOpen, TokenKind::Return, TokenKind::Constant(6),
-        TokenKind::Semicolon, TokenKind::BraceClose
+        TokenKind::Int,
+        TokenKind::Identifier("main".to_owned()),
+        TokenKind::ParenOpen,
+        TokenKind::Void,
+        TokenKind::ParenClose,
+        TokenKind::BraceOpen,
+        TokenKind::Return,
+        TokenKind::Constant(6),
+        TokenKind::Semicolon,
+        TokenKind::BraceClose,
     ];
 
     let tokens = driver.lex(source);
@@ -63,11 +69,20 @@ fn test_unary_lex() {
     let source = fs::read_to_string(preprocessed_path).unwrap();
 
     let tokens_expected: Vec<TokenKind> = vec![
-        TokenKind::Int, TokenKind::Identifier("main".to_owned()),
-        TokenKind::ParenOpen, TokenKind::Void, TokenKind::ParenClose,
-        TokenKind::BraceOpen, TokenKind::Return, TokenKind::Complement,
-        TokenKind::ParenOpen, TokenKind::Minus, TokenKind::Constant(2),
-        TokenKind::ParenClose, TokenKind::Semicolon, TokenKind::BraceClose
+        TokenKind::Int,
+        TokenKind::Identifier("main".to_owned()),
+        TokenKind::ParenOpen,
+        TokenKind::Void,
+        TokenKind::ParenClose,
+        TokenKind::BraceOpen,
+        TokenKind::Return,
+        TokenKind::Complement,
+        TokenKind::ParenOpen,
+        TokenKind::Minus,
+        TokenKind::Constant(2),
+        TokenKind::ParenClose,
+        TokenKind::Semicolon,
+        TokenKind::BraceClose,
     ];
 
     let tokens = driver.lex(source);
