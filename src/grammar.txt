@@ -11,7 +11,13 @@ statement = Return(exp)
 		| Expression(exp)
 		| If(exp condition, statement then, statement? else)
 		| Compound(block)
+		| Break(identifier label)
+		| Continue(identifier label)
+		| While(exp condition, statement body, identifier label)
+		| DoWhile(statement body, exp condition, identifier label)
+		| For(for_init init, exp? condition, exp? post, statement body, identifier label)
 		| Null
+for_init = InitDecl(declaration) | InitExp(exp?)
 exp = Constant(int)
 		| Var(identifier)
 		| Unary(unary_operator, exp)
@@ -31,10 +37,16 @@ Grammar
 <block> ::= "{" {<block-item>} "}"
 <block-item> ::= <statement> | <declaration>
 <declaration> ::= "int" <identifier> ["=" <exp>] ";"
+<for-init> ::= <declaration> | [<exp>] ";"
 <statement> ::= "return" <exp> ";"
 		 | <exp> ";"
 		 | "if" "(" <exp> ")" <statement> ["else" <statement>]
 		 | <block>
+		 | "break" ";"
+		 | "continue" ";"
+		 | "while" "(" <exp> ")" <statement>
+		 | "do" <statement> "while" "(" <exp> ")" ";"
+		 | "for" "(" <for-init> [<exp>] ";" [<exp>] ")" <statement>
  		 | ";" 
 <exp> ::= <factor> | <exp> <binop> <exp> | <exp> "?" <exp> ":" <exp>
 <factor> ::= <int> | <identifier> | <unop> <factor> | "(" <exp> ")"

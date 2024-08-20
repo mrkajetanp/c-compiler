@@ -143,7 +143,7 @@ impl ast::Statement {
                 Self::Compound(block.validate(ctx, &mut new_variables))
             }
             Self::Null => self,
-            // _ => todo!(),
+            _ => todo!(),
         }
     }
 }

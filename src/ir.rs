@@ -153,7 +153,7 @@ impl Instruction {
             }
             Statement::Compound(block) => Self::generate_from_block(block, ctx),
             Statement::Null => vec![],
-            // _ => todo!(),
+            _ => todo!(),
         }
     }
 

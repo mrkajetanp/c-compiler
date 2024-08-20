@@ -9,6 +9,11 @@ static CONSTANT_RE: &str = r"[[:digit:]]+\b";
 static RETURN_RE: &str = r"return\b";
 static INT_RE: &str = r"int\b";
 static VOID_RE: &str = r"void\b";
+static DO_RE: &str = r"do\b";
+static WHILE_RE: &str = r"while\b";
+static FOR_RE: &str = r"for\b";
+static BREAK_RE: &str = r"break\b";
+static CONTINUE_RE: &str = r"continue\b";
 static PAREN_OPEN_RE: &str = r"\(";
 static PAREN_CLOSE_RE: &str = r"\)";
 static BRACE_OPEN_RE: &str = r"\{";
@@ -43,6 +48,11 @@ pub enum TokenKind {
     Return,
     Int,
     Void,
+    Do,
+    While,
+    For,
+    Break,
+    Continue,
     ParenOpen,
     ParenClose,
     BraceOpen,
@@ -85,12 +95,17 @@ impl TokenKind {
     pub fn from_str(input: &str) -> Option<TokenKind> {
         let input = input.trim();
 
-        log::trace!("Trying to tokenize input {:?}", input);
+        // log::trace!("Trying to tokenize input {:?}", input);
 
         match input {
+            input if TokenKind::is_full_match(input, RETURN_RE) => Some(Self::Return),
             input if TokenKind::is_full_match(input, INT_RE) => Some(Self::Int),
             input if TokenKind::is_full_match(input, VOID_RE) => Some(Self::Void),
-            input if TokenKind::is_full_match(input, RETURN_RE) => Some(Self::Return),
+            input if TokenKind::is_full_match(input, DO_RE) => Some(Self::Do),
+            input if TokenKind::is_full_match(input, WHILE_RE) => Some(Self::While),
+            input if TokenKind::is_full_match(input, FOR_RE) => Some(Self::For),
+            input if TokenKind::is_full_match(input, BREAK_RE) => Some(Self::Break),
+            input if TokenKind::is_full_match(input, CONTINUE_RE) => Some(Self::Continue),
             input if TokenKind::is_full_match(input, PAREN_CLOSE_RE) => Some(Self::ParenClose),
             input if TokenKind::is_full_match(input, PAREN_OPEN_RE) => Some(Self::ParenOpen),
             input if TokenKind::is_full_match(input, BRACE_OPEN_RE) => Some(Self::BraceOpen),
@@ -133,38 +148,44 @@ impl TokenKind {
 
     pub fn to_regex(&self) -> Regex {
         match self {
-            Self::Identifier(_) => Regex::new(IDENTIFIER_RE).unwrap(),
-            Self::Constant(_) => Regex::new(CONSTANT_RE).unwrap(),
-            Self::Return => Regex::new(RETURN_RE).unwrap(),
-            Self::Int => Regex::new(INT_RE).unwrap(),
-            Self::Void => Regex::new(VOID_RE).unwrap(),
-            Self::ParenOpen => Regex::new(PAREN_OPEN_RE).unwrap(),
-            Self::ParenClose => Regex::new(PAREN_CLOSE_RE).unwrap(),
-            Self::BraceOpen => Regex::new(BRACE_OPEN_RE).unwrap(),
-            Self::BraceClose => Regex::new(BRACE_CLOSE_RE).unwrap(),
-            Self::Semicolon => Regex::new(SEMICOLON_RE).unwrap(),
-            Self::Complement => Regex::new(COMPLEMENT_RE).unwrap(),
-            Self::Decrement => Regex::new(DECREMENT_RE).unwrap(),
-            Self::Minus => Regex::new(MINUS_RE).unwrap(),
-            Self::Plus => Regex::new(PLUS_RE).unwrap(),
-            Self::Asterisk => Regex::new(ASTERISK_RE).unwrap(),
-            Self::Slash => Regex::new(SLASH_RE).unwrap(),
-            Self::Percent => Regex::new(PERCENT_RE).unwrap(),
-            Self::And => Regex::new(AND_RE).unwrap(),
-            Self::Or => Regex::new(OR_RE).unwrap(),
-            Self::NotEqual => Regex::new(NOT_EQUAL_RE).unwrap(),
-            Self::Not => Regex::new(NOT_RE).unwrap(),
-            Self::GreaterThan => Regex::new(GREATER_THAN_RE).unwrap(),
-            Self::LessThan => Regex::new(LESS_THAN_RE).unwrap(),
-            Self::GreaterEqualThan => Regex::new(GREATER_EQUAL_THAN_RE).unwrap(),
-            Self::LessEqualThan => Regex::new(LESS_EQUAL_THAN_RE).unwrap(),
-            Self::Equal => Regex::new(EQUAL_RE).unwrap(),
-            Self::Assignment => Regex::new(ASSIGNMENT_RE).unwrap(),
-            Self::If => Regex::new(IF_RE).unwrap(),
-            Self::Else => Regex::new(ELSE_RE).unwrap(),
-            Self::Question => Regex::new(QUESTION_RE).unwrap(),
-            Self::Colon => Regex::new(COLON_RE).unwrap(),
+            Self::Identifier(_) => Regex::new(IDENTIFIER_RE),
+            Self::Constant(_) => Regex::new(CONSTANT_RE),
+            Self::Return => Regex::new(RETURN_RE),
+            Self::Int => Regex::new(INT_RE),
+            Self::Void => Regex::new(VOID_RE),
+            Self::Do => Regex::new(DO_RE),
+            Self::While => Regex::new(WHILE_RE),
+            Self::For => Regex::new(FOR_RE),
+            Self::Break => Regex::new(BREAK_RE),
+            Self::Continue => Regex::new(CONTINUE_RE),
+            Self::ParenOpen => Regex::new(PAREN_OPEN_RE),
+            Self::ParenClose => Regex::new(PAREN_CLOSE_RE),
+            Self::BraceOpen => Regex::new(BRACE_OPEN_RE),
+            Self::BraceClose => Regex::new(BRACE_CLOSE_RE),
+            Self::Semicolon => Regex::new(SEMICOLON_RE),
+            Self::Complement => Regex::new(COMPLEMENT_RE),
+            Self::Decrement => Regex::new(DECREMENT_RE),
+            Self::Minus => Regex::new(MINUS_RE),
+            Self::Plus => Regex::new(PLUS_RE),
+            Self::Asterisk => Regex::new(ASTERISK_RE),
+            Self::Slash => Regex::new(SLASH_RE),
+            Self::Percent => Regex::new(PERCENT_RE),
+            Self::And => Regex::new(AND_RE),
+            Self::Or => Regex::new(OR_RE),
+            Self::NotEqual => Regex::new(NOT_EQUAL_RE),
+            Self::Not => Regex::new(NOT_RE),
+            Self::GreaterThan => Regex::new(GREATER_THAN_RE),
+            Self::LessThan => Regex::new(LESS_THAN_RE),
+            Self::GreaterEqualThan => Regex::new(GREATER_EQUAL_THAN_RE),
+            Self::LessEqualThan => Regex::new(LESS_EQUAL_THAN_RE),
+            Self::Equal => Regex::new(EQUAL_RE),
+            Self::Assignment => Regex::new(ASSIGNMENT_RE),
+            Self::If => Regex::new(IF_RE),
+            Self::Else => Regex::new(ELSE_RE),
+            Self::Question => Regex::new(QUESTION_RE),
+            Self::Colon => Regex::new(COLON_RE),
         }
+        .unwrap()
     }
 
     pub fn precedence(&self) -> u32 {
