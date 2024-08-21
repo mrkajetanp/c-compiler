@@ -114,16 +114,6 @@ impl Instruction {
         }
     }
 
-    pub fn generate_from_declaration(declaration: ast::Declaration, ctx: &mut IrCtx) -> Vec<Self> {
-        if let Some(expr) = declaration.init {
-            let left = ast::Expression::Var(declaration.name);
-            let assignment = ast::Expression::Assignment(Box::new(left), Box::new(expr));
-            Self::generate_from_expr(assignment, ctx).0
-        } else {
-            vec![]
-        }
-    }
-
     pub fn generate_from_statement(statement: ast::Statement, ctx: &mut IrCtx) -> Vec<Self> {
         match statement {
             Statement::Return(expr) => {
@@ -152,8 +142,76 @@ impl Instruction {
                 instructions
             }
             Statement::Compound(block) => Self::generate_from_block(block, ctx),
+            Statement::Break(label) => {
+                vec![Instruction::Jump(Identifier::new(&format!(
+                    "break_{}",
+                    label.unwrap()
+                )))]
+            }
+            Statement::Continue(label) => {
+                vec![Instruction::Jump(Identifier::new(&format!(
+                    "continue_{}",
+                    label.unwrap()
+                )))]
+            }
+            Statement::While(cond, body, label) => {
+                let start_label = Identifier::new(&format!("continue_{}", label.as_ref().unwrap()));
+                let end_label = Identifier::new(&format!("break_{}", label.as_ref().unwrap()));
+
+                let mut instructions = vec![Instruction::Label(start_label.clone())];
+                let (mut cond_instrs, cond_val) = Self::generate_from_expr(cond, ctx);
+                instructions.append(&mut cond_instrs);
+                instructions.push(Instruction::JumpIfZero(cond_val, end_label.clone()));
+                let mut body_instrs = Self::generate_from_statement(*body, ctx);
+                instructions.append(&mut body_instrs);
+                instructions.push(Instruction::Jump(start_label.clone()));
+                instructions.push(Instruction::Label(end_label.clone()));
+                log::trace!("Emitting IR for while -> {:?}", instructions);
+                instructions
+            }
+            Statement::DoWhile(body, cond, label) => {
+                let start_label = Identifier::new(&format!("start_{}", label.as_ref().unwrap()));
+                let break_label = Identifier::new(&format!("break_{}", label.as_ref().unwrap()));
+                let continue_label =
+                    Identifier::new(&format!("continue_{}", label.as_ref().unwrap()));
+
+                let mut instructions = vec![Instruction::Label(start_label.clone())];
+                let mut body_instrs = Self::generate_from_statement(*body, ctx);
+                instructions.append(&mut body_instrs);
+                instructions.push(Instruction::Label(continue_label.clone()));
+                let (mut cond_instrs, cond_val) = Self::generate_from_expr(cond, ctx);
+                instructions.append(&mut cond_instrs);
+                instructions.push(Instruction::JumpIfNotZero(cond_val, start_label));
+                instructions.push(Instruction::Label(break_label.clone()));
+                log::trace!("Emitting IR for do-while -> {:?}", instructions);
+                instructions
+            }
+            Statement::For(init, cond, post, body, label) => {
+                let start_label = Identifier::new(&format!("start_{}", label.as_ref().unwrap()));
+                let continue_label =
+                    Identifier::new(&format!("continue_{}", label.as_ref().unwrap()));
+                let end_label = Identifier::new(&format!("break_{}", label.as_ref().unwrap()));
+
+                let mut instructions = Self::generate_from_for_init(init, ctx);
+                instructions.push(Instruction::Label(start_label.clone()));
+                if let Some(cond) = cond {
+                    let (mut cond_instrs, cond_val) = Self::generate_from_expr(cond, ctx);
+                    instructions.append(&mut cond_instrs);
+                    instructions.push(Instruction::JumpIfZero(cond_val, end_label.clone()));
+                }
+                let mut body_instrs = Self::generate_from_statement(*body, ctx);
+                instructions.append(&mut body_instrs);
+                instructions.push(Instruction::Label(continue_label.clone()));
+                if let Some(post) = post {
+                    let mut post_instrs = Self::generate_from_expr(post, ctx).0;
+                    instructions.append(&mut post_instrs);
+                }
+                instructions.push(Instruction::Jump(start_label));
+                instructions.push(Instruction::Label(end_label));
+                instructions
+            }
             Statement::Null => vec![],
-            _ => todo!(),
+            // _ => todo!(),
         }
     }
 
@@ -161,6 +219,24 @@ impl Instruction {
         let mut instructions = vec![];
         let result = Val::generate(expr, &mut instructions, ctx);
         (instructions, result)
+    }
+
+    pub fn generate_from_declaration(declaration: ast::Declaration, ctx: &mut IrCtx) -> Vec<Self> {
+        if let Some(expr) = declaration.init {
+            let left = ast::Expression::Var(declaration.name);
+            let assignment = ast::Expression::Assignment(Box::new(left), Box::new(expr));
+            Self::generate_from_expr(assignment, ctx).0
+        } else {
+            vec![]
+        }
+    }
+
+    pub fn generate_from_for_init(init: ast::ForInit, ctx: &mut IrCtx) -> Vec<Self> {
+        match init {
+            ast::ForInit::InitDecl(decl) => Self::generate_from_declaration(decl, ctx),
+            ast::ForInit::InitExp(expr) => Self::generate_from_expr(expr, ctx).0,
+            ast::ForInit::InitNull => vec![],
+        }
     }
 }
 

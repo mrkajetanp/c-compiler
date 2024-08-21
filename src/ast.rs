@@ -463,7 +463,7 @@ impl Expression {
             return Ok(inner);
         }
 
-        log_error("Could not parse any factor from", tokens);
+        log_trace("Could not parse any factor from", tokens);
         Err(ParserError::MalformedExpression)
     }
 
