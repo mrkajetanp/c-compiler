@@ -1,8 +1,18 @@
 use crate::ast;
 use std::collections::HashMap;
+use thiserror::Error;
 
-static PANIC_STAGE: &str = "Semantic Analysis Error";
+#[derive(Error, Debug)]
+pub enum SemanticError {
+    #[error("Use of undeclared variable: `{0}`")]
+    UndeclaredVariable(String),
+    #[error("Duplicate declaration of `{0}`")]
+    DuplicateDeclaration(String),
+    #[error("Invalid assignment lvalue: `{0}`")]
+    InvalidLvalue(String),
+}
 
+type SemanticResult<T> = Result<T, SemanticError>;
 type VariableMap = HashMap<String, VariableMapEntry>;
 
 pub struct SemanticCtx {
@@ -24,12 +34,11 @@ impl SemanticCtx {
         &self,
         ident: &ast::Identifier,
         variables: &mut VariableMap,
-    ) -> ast::Identifier {
+    ) -> SemanticResult<ast::Identifier> {
         if let Some(unique_ident_entry) = variables.get(&ident.to_string()) {
-            ast::Identifier::new(&unique_ident_entry.name)
+            Ok(ast::Identifier::new(&unique_ident_entry.name))
         } else {
-            log::error!("Use of undeclared variable {}", ident);
-            panic!("{}", PANIC_STAGE)
+            Err(SemanticError::UndeclaredVariable(ident.to_string()))
         }
     }
 }
@@ -56,52 +65,66 @@ impl VariableMapEntry {
 impl ast::Program {
     pub fn validate(self) -> Self {
         let mut ctx = SemanticCtx::new();
-        Self {
-            body: self.body.validate(&mut ctx),
-        }
+        let body = match self.body.validate(&mut ctx) {
+            Ok(body) => body,
+            Err(err) => panic!("Semantic analysis failed: {}", err),
+        };
+        Self { body }
     }
 }
 
 impl ast::Function {
-    pub fn validate(self, ctx: &mut SemanticCtx) -> Self {
+    pub fn validate(self, ctx: &mut SemanticCtx) -> SemanticResult<Self> {
         let mut variables: VariableMap = HashMap::new();
-        Self {
+        Ok(Self {
             name: self.name,
             return_type: self.return_type,
-            body: self.body.validate(ctx, &mut variables),
-        }
+            body: self.body.validate(ctx, &mut variables)?,
+        })
     }
 }
 
 impl ast::Block {
-    pub fn validate(self, ctx: &mut SemanticCtx, variables: &mut VariableMap) -> Self {
-        Self {
+    pub fn validate(
+        self,
+        ctx: &mut SemanticCtx,
+        variables: &mut VariableMap,
+    ) -> SemanticResult<Self> {
+        Ok(Self {
             body: self
                 .body
                 .into_iter()
                 .map(|b| b.validate(ctx, variables))
-                .collect(),
-        }
+                .collect::<Result<Vec<ast::BlockItem>, SemanticError>>()?,
+        })
     }
 }
 
 impl ast::BlockItem {
-    pub fn validate(self, ctx: &mut SemanticCtx, variables: &mut VariableMap) -> Self {
-        match self {
-            Self::Decl(declaration) => Self::Decl(declaration.validate(ctx, variables)),
-            Self::Stmt(statement) => Self::Stmt(statement.validate(ctx, variables)),
-        }
+    pub fn validate(
+        self,
+        ctx: &mut SemanticCtx,
+        variables: &mut VariableMap,
+    ) -> SemanticResult<Self> {
+        Ok(match self {
+            Self::Decl(declaration) => Self::Decl(declaration.validate(ctx, variables)?),
+            Self::Stmt(statement) => Self::Stmt(statement.validate(ctx, variables)?),
+        })
     }
 }
 
 impl ast::Declaration {
-    pub fn validate(self, ctx: &mut SemanticCtx, variables: &mut VariableMap) -> Self {
+    pub fn validate(
+        self,
+        ctx: &mut SemanticCtx,
+        variables: &mut VariableMap,
+    ) -> SemanticResult<Self> {
         let existing = variables.get(&self.name.to_string());
 
         if let Some(entry) = existing
             && entry.from_current_block
         {
-            panic!("Duplicate variable declaration, {:?}", entry);
+            return Err(SemanticError::DuplicateDeclaration(entry.name.to_string()));
         }
 
         let name = ctx.gen_unique_ident(&self.name);
@@ -112,25 +135,29 @@ impl ast::Declaration {
         );
 
         let init = if let Some(exp) = self.init {
-            Some(exp.validate(ctx, variables))
+            Some(exp.validate(ctx, variables)?)
         } else {
             None
         };
 
-        Self { name, init }
+        Ok(Self { name, init })
     }
 }
 
 impl ast::Statement {
-    pub fn validate(self, ctx: &mut SemanticCtx, variables: &mut VariableMap) -> Self {
-        match self {
-            Self::Return(exp) => Self::Return(exp.validate(ctx, variables)),
-            Self::Exp(exp) => Self::Exp(exp.validate(ctx, variables)),
+    pub fn validate(
+        self,
+        ctx: &mut SemanticCtx,
+        variables: &mut VariableMap,
+    ) -> SemanticResult<Self> {
+        Ok(match self {
+            Self::Return(exp) => Self::Return(exp.validate(ctx, variables)?),
+            Self::Exp(exp) => Self::Exp(exp.validate(ctx, variables)?),
             Self::If(cond, then_stmt, else_stmt) => Self::If(
-                cond.validate(ctx, variables),
-                Box::new(then_stmt.validate(ctx, variables)),
+                cond.validate(ctx, variables)?,
+                Box::new(then_stmt.validate(ctx, variables)?),
                 if let Some(stmt) = else_stmt {
-                    Some(Box::new(stmt.validate(ctx, variables)))
+                    Some(Box::new(stmt.validate(ctx, variables)?))
                 } else {
                     None
                 },
@@ -140,42 +167,47 @@ impl ast::Statement {
                 for (_, v) in new_variables.iter_mut() {
                     v.unset_from_current_block();
                 }
-                Self::Compound(block.validate(ctx, &mut new_variables))
+                Self::Compound(block.validate(ctx, &mut new_variables)?)
             }
             Self::Null => self,
             _ => todo!(),
-        }
+        })
     }
 }
 
 impl ast::Expression {
-    pub fn validate(self, ctx: &mut SemanticCtx, variables: &mut VariableMap) -> Self {
-        match self {
+    pub fn validate(
+        self,
+        ctx: &mut SemanticCtx,
+        variables: &mut VariableMap,
+    ) -> SemanticResult<Self> {
+        Ok(match self {
             Self::Assignment(left, right) => {
                 if let Self::Var(_) = &*left {
                     Self::Assignment(
-                        Box::new(left.validate(ctx, variables)),
-                        Box::new(right.validate(ctx, variables)),
+                        Box::new(left.validate(ctx, variables)?),
+                        Box::new(right.validate(ctx, variables)?),
                     )
                 } else {
-                    log::error!("Invalid assignment lvalue {:?}", left);
-                    panic!("{}", PANIC_STAGE)
+                    let lvalue = format!("{:?}", left);
+                    log::error!("Invalid assignment lvalue {}", lvalue);
+                    return Err(SemanticError::InvalidLvalue(lvalue));
                 }
             }
-            Self::Var(ident) => Self::Var(ctx.get_unique_ident(&ident, variables)),
-            Self::Unary(op, expr) => Self::Unary(op, Box::new(expr.validate(ctx, variables))),
+            Self::Var(ident) => Self::Var(ctx.get_unique_ident(&ident, variables)?),
+            Self::Unary(op, expr) => Self::Unary(op, Box::new(expr.validate(ctx, variables)?)),
             Self::Binary(op, e1, e2) => Self::Binary(
                 op,
-                Box::new(e1.validate(ctx, variables)),
-                Box::new(e2.validate(ctx, variables)),
+                Box::new(e1.validate(ctx, variables)?),
+                Box::new(e2.validate(ctx, variables)?),
             ),
             Self::Conditional(cond, then_exp, else_exp) => Self::Conditional(
-                Box::new(cond.validate(ctx, variables)),
-                Box::new(then_exp.validate(ctx, variables)),
-                Box::new(else_exp.validate(ctx, variables)),
+                Box::new(cond.validate(ctx, variables)?),
+                Box::new(then_exp.validate(ctx, variables)?),
+                Box::new(else_exp.validate(ctx, variables)?),
             ),
             Self::Constant(_) => self,
             // _ => todo!(),
-        }
+        })
     }
 }
