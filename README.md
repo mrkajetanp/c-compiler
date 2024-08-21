@@ -9,11 +9,11 @@ The end goal is for it to be a complete C compiler with hand-crafted codegen for
 ## Feature list
 
 - [ ] Functions
-- [ ] Loops
 - [ ] Labeled statements & goto
 - [ ] Increment & decrement operators
 - [ ] Compound assignment (+=, -=, *=, /=, %=)
 - [ ] Bitwise operators (&, |, ^, <<, >>)
+- [X] Loops
 - [X] Compound statements 
 - [X] If statements 
 - [X] Basic statements (return & null) 

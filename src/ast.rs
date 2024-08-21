@@ -6,15 +6,6 @@ use std::{error::Error, fmt};
 use strum_macros::{Display, EnumIs};
 
 #[inline(always)]
-fn log_error(msg: &str, tokens: &mut VecDeque<TokenKind>) {
-    log::error!(
-        "{} {:?}",
-        msg,
-        tokens.iter().take(4).collect::<Vec<&TokenKind>>()
-    );
-}
-
-#[inline(always)]
 fn log_trace(msg: &str, tokens: &mut VecDeque<TokenKind>) {
     log::trace!(
         "{} {:?}",
@@ -463,7 +454,7 @@ impl Expression {
             return Ok(inner);
         }
 
-        log_error("Could not parse any factor from", tokens);
+        log_trace("Could not parse any factor from", tokens);
         Err(ParserError::MalformedExpression)
     }
 
