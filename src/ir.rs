@@ -65,7 +65,7 @@ impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} -> {}:\n", self.name, self.return_type).unwrap();
         for instr in &self.instructions {
-            write!(f, "\t{}\n", instr).unwrap();
+            write!(f, "{}\n", instr).unwrap();
         }
         Ok(())
     }
@@ -243,15 +243,15 @@ impl Instruction {
 impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let result = match self {
-            Instruction::Return(val) => format!("return {}", val),
-            Instruction::Unary(op, src, dst) => format!("{} = {}{}", dst, op, src),
+            Instruction::Return(val) => format!("\treturn {}", val),
+            Instruction::Unary(op, src, dst) => format!("\t{} = {}{}", dst, op, src),
             Instruction::Binary(op, src1, src2, dst) => {
-                format!("{} = {} {} {}", dst, src1, op, src2)
+                format!("\t{} = {} {} {}", dst, src1, op, src2)
             }
-            Instruction::Copy(src, dst) => format!("{} = {}", dst, src),
-            Instruction::Jump(ident) => format!("jump {}", ident),
-            Instruction::JumpIfZero(val, ident) => format!("jumpz {} {}", val, ident),
-            Instruction::JumpIfNotZero(val, ident) => format!("jumpnz {} {}", val, ident),
+            Instruction::Copy(src, dst) => format!("\t{} = {}", dst, src),
+            Instruction::Jump(ident) => format!("\tjump {}\n\n", ident),
+            Instruction::JumpIfZero(val, ident) => format!("\tjumpz {} {}\n", val, ident),
+            Instruction::JumpIfNotZero(val, ident) => format!("\tjumpnz {} {}\n", val, ident),
             Instruction::Label(ident) => format!(":{}", ident),
         };
         write!(f, "{}", result)

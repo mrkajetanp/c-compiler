@@ -142,6 +142,7 @@ impl Driver {
         let asm = code.emit();
 
         if log::log_enabled!(log::Level::Debug) {
+            log::debug!("Emitted asm:");
             Driver::print_asm_with_highlight(&asm);
         }
 
