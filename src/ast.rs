@@ -1,5 +1,5 @@
 use crate::lexer::*;
-use display_tree::DisplayTree;
+use display_tree::{format_tree, DisplayTree, StyleBuilder};
 use std::collections::VecDeque;
 use std::mem::discriminant;
 use std::{error::Error, fmt};
@@ -222,38 +222,157 @@ impl DisplayTree for Declaration {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, DisplayTree)]
+#[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub enum Statement {
-    Return(#[tree] Expression),
-    Exp(#[tree] Expression),
-    If(
-        #[tree] Expression,
-        #[tree] Box<Statement>,
-        // TODO: manually implement DisplayTree
-        #[ignore_field] Option<Box<Statement>>,
-    ),
-    Compound(#[tree] Block),
-    Break(#[ignore_field] Option<Identifier>),
-    Continue(#[ignore_field] Option<Identifier>),
-    While(
-        #[tree] Expression,
-        #[tree] Box<Statement>,
-        #[ignore_field] Option<Identifier>,
-    ),
-    DoWhile(
-        #[tree] Box<Statement>,
-        #[tree] Expression,
-        #[ignore_field] Option<Identifier>,
-    ),
+    Return(Expression),
+    Exp(Expression),
+    If(Expression, Box<Statement>, Option<Box<Statement>>),
+    Compound(Block),
+    Break(Option<Identifier>),
+    Continue(Option<Identifier>),
+    While(Expression, Box<Statement>, Option<Identifier>),
+    DoWhile(Box<Statement>, Expression, Option<Identifier>),
     For(
-        #[tree] ForInit,
-        #[ignore_field] Option<Expression>,
-        #[ignore_field] Option<Expression>,
-        #[tree] Box<Statement>,
-        #[ignore_field] Option<Identifier>,
+        ForInit,
+        Option<Expression>,
+        Option<Expression>,
+        Box<Statement>,
+        Option<Identifier>,
     ),
     Null,
+}
+
+impl DisplayTree for Statement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>, style: display_tree::Style) -> std::fmt::Result {
+        fn option_ident_to_string(ident: &Option<Identifier>) -> String {
+            if let Some(ident) = ident {
+                ident.to_string()
+            } else {
+                "None".to_string()
+            }
+        }
+
+        match self {
+            Statement::Return(val) => writeln!(
+                f,
+                "{}{} Return {}",
+                style.char_set.connector,
+                std::iter::repeat(style.char_set.horizontal)
+                    .take(style.indentation as usize)
+                    .collect::<String>(),
+                display_tree::format_tree!(*val)
+            ),
+            Statement::While(cond, body, label) => {
+                writeln!(
+                    f,
+                    "{}{} while [{}]",
+                    style.char_set.connector,
+                    std::iter::repeat(style.char_set.horizontal)
+                        .take(style.indentation as usize)
+                        .collect::<String>(),
+                    option_ident_to_string(label)
+                )?;
+                writeln!(
+                    f,
+                    "{}{} {}",
+                    style.char_set.connector,
+                    std::iter::repeat(style.char_set.horizontal)
+                        .take(style.indentation as usize + 4)
+                        .collect::<String>(),
+                    format_tree!(*cond, style.indentation(style.indentation + 4)),
+                )?;
+                display_tree::writeln_tree!(f, **body)
+            }
+            Statement::DoWhile(body, cond, label) => {
+                writeln!(
+                    f,
+                    "{}{} do-while [{}]",
+                    style.char_set.connector,
+                    std::iter::repeat(style.char_set.horizontal)
+                        .take(style.indentation as usize)
+                        .collect::<String>(),
+                    option_ident_to_string(label)
+                )?;
+                writeln!(
+                    f,
+                    "{}{} {}",
+                    style.char_set.connector,
+                    std::iter::repeat(style.char_set.horizontal)
+                        .take(style.indentation as usize + 4)
+                        .collect::<String>(),
+                    format_tree!(*cond, style.indentation(style.indentation + 4)),
+                )?;
+                display_tree::writeln_tree!(f, **body)
+            }
+            Statement::If(cond, then_stmt, else_stmt) => {
+                writeln!(
+                    f,
+                    "{}{} if",
+                    style.char_set.connector,
+                    std::iter::repeat(style.char_set.horizontal)
+                        .take(style.indentation as usize)
+                        .collect::<String>(),
+                )?;
+                writeln!(
+                    f,
+                    "{}{} {}",
+                    style.char_set.connector,
+                    std::iter::repeat(style.char_set.horizontal)
+                        .take(style.indentation as usize + 4)
+                        .collect::<String>(),
+                    format_tree!(*cond, style.indentation(style.indentation + 4)),
+                )?;
+                display_tree::writeln_tree!(f, **then_stmt)?;
+                if let Some(else_stmt) = else_stmt {
+                    display_tree::writeln_tree!(f, **else_stmt)?;
+                }
+                Ok(())
+            }
+            Statement::Break(label) => writeln!(
+                f,
+                "{}{} break [{}]",
+                style.char_set.connector,
+                std::iter::repeat(style.char_set.horizontal)
+                    .take(style.indentation as usize)
+                    .collect::<String>(),
+                option_ident_to_string(label)
+            ),
+            Statement::Continue(label) => writeln!(
+                f,
+                "{}{} continue [{}]",
+                style.char_set.connector,
+                std::iter::repeat(style.char_set.horizontal)
+                    .take(style.indentation as usize)
+                    .collect::<String>(),
+                option_ident_to_string(label)
+            ),
+            Statement::For(init, cond, post, body, label) => {
+                writeln!(
+                    f,
+                    "{}{} for [{}]",
+                    style.char_set.connector,
+                    std::iter::repeat(style.char_set.horizontal)
+                        .take(style.indentation as usize)
+                        .collect::<String>(),
+                    option_ident_to_string(label)
+                )?;
+                display_tree::writeln_tree!(f, *init)?;
+                if let Some(cond) = cond {
+                    display_tree::writeln_tree!(f, *cond)?;
+                }
+                if let Some(post) = post {
+                    display_tree::writeln_tree!(f, *post)?;
+                }
+                display_tree::writeln_tree!(f, **body)?;
+                Ok(())
+            }
+            Statement::Compound(block) => display_tree::writeln_tree!(f, *block),
+            Statement::Exp(expr) => display_tree::writeln_tree!(f, *expr),
+            Statement::Null => writeln!(f, "Null"),
+        }?;
+        Ok(())
+    }
 }
 
 impl Statement {
