@@ -152,6 +152,15 @@ impl DisplayTree for Block {
     }
 }
 
+impl fmt::Display for Block {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for basic_block in &self.body {
+            writeln!(f, "{}", basic_block)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, DisplayTree)]
 #[allow(dead_code)]
 pub enum BlockItem {
@@ -171,6 +180,15 @@ impl BlockItem {
         } else {
             BlockItem::Stmt(Statement::parse(tokens)?)
         })
+    }
+}
+
+impl fmt::Display for BlockItem {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            BlockItem::Stmt(stmt) => write!(f, "{}", stmt),
+            BlockItem::Decl(decl) => write!(f, "{}", decl),
+        }
     }
 }
 
@@ -199,8 +217,20 @@ impl Declaration {
         };
 
         let result = Self { name: ident, init };
-        log::trace!("-- Parsed declaration {:?}", result);
+        log::trace!("-- Parsed declaration: {}", result);
         Ok(result)
+    }
+}
+
+impl fmt::Display for Declaration {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "int {}", self.name)?;
+        if let Some(init) = &self.init {
+            write!(f, " = {}", init)?;
+        } else {
+            write!(f, ";")?;
+        }
+        Ok(())
     }
 }
 
@@ -245,14 +275,6 @@ pub enum Statement {
 
 impl DisplayTree for Statement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>, style: display_tree::Style) -> std::fmt::Result {
-        fn option_ident_to_string(ident: &Option<Identifier>) -> String {
-            if let Some(ident) = ident {
-                ident.to_string()
-            } else {
-                "None".to_string()
-            }
-        }
-
         match self {
             Statement::Return(val) => writeln!(
                 f,
@@ -375,6 +397,65 @@ impl DisplayTree for Statement {
     }
 }
 
+impl fmt::Display for Statement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Statement::Return(exp) => write!(f, "return {}", exp),
+            Statement::Exp(exp) => write!(f, "{};", exp),
+            Statement::If(cond, then_stmt, else_stmt) => {
+                writeln!(f, "\nif ({})", cond)?;
+                writeln!(f, "\t{}", then_stmt)?;
+                if let Some(else_stmt) = else_stmt {
+                    writeln!(f, "else")?;
+                    writeln!(f, "\t{}", else_stmt)?;
+                }
+                Ok(())
+            }
+            Statement::Compound(block) => {
+                write!(f, "\n{}", block)
+            }
+            Statement::While(cond, body, label) => {
+                writeln!(f, "\nwhile ({}) [{}]", cond, option_ident_to_string(label))?;
+                write!(f, "\t{}", body)
+            }
+            Statement::DoWhile(body, cond, label) => {
+                writeln!(f, "\ndo")?;
+                writeln!(f, "\t{}", body)?;
+                writeln!(f, "while ({}) [{}]", cond, option_ident_to_string(label))?;
+                Ok(())
+            }
+            Statement::For(init, cond, post, body, label) => {
+                let cond = if let Some(cond) = cond {
+                    cond.to_string()
+                } else {
+                    " ".to_string()
+                };
+
+                let post = if let Some(post) = post {
+                    post.to_string()
+                } else {
+                    " ".to_string()
+                };
+
+                writeln!(
+                    f,
+                    "\nfor ({} ; {} ; {}) [{}]",
+                    init,
+                    cond,
+                    post,
+                    option_ident_to_string(label)
+                )?;
+                write!(f, "\t{}", body)
+            } // _ => write!(f, "{:?}", self),
+            Statement::Break(label) => writeln!(f, "break [{}]", option_ident_to_string(label)),
+            Statement::Continue(label) => {
+                writeln!(f, "continue [{}]", option_ident_to_string(label))
+            }
+            Statement::Null => write!(f, "NULL"),
+        }
+    }
+}
+
 impl Statement {
     fn parse(tokens: &mut VecDeque<TokenKind>) -> Result<Statement, ParserError> {
         log_trace("Trying statement from", tokens);
@@ -458,7 +539,7 @@ impl Statement {
             }
         };
 
-        log::trace!("-- Parsed stmt {:?}", result);
+        log::trace!("-- Parsed statement: {}", result);
         Ok(result)
     }
 }
@@ -480,6 +561,16 @@ impl ForInit {
         } else {
             Self::InitNull
         })
+    }
+}
+
+impl fmt::Display for ForInit {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::InitDecl(decl) => write!(f, "{}", decl),
+            Self::InitExp(expr) => write!(f, "{}", expr),
+            Self::InitNull => write!(f, " "),
+        }
     }
 }
 
@@ -537,7 +628,7 @@ impl Expression {
             }
             token = tokens.front().unwrap().to_owned();
         }
-        log::trace!("-- Parsed expr {:?}", left);
+        log::trace!("-- Parsed expression: {}", left);
         Ok(left)
     }
 
@@ -587,7 +678,20 @@ impl Expression {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, DisplayTree, Display, EnumIs)]
+impl fmt::Display for Expression {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Expression::Binary(op, left, right) => write!(f, "{} {} {}", left, op, right),
+            Expression::Unary(op, expr) => write!(f, "{}{}", op, expr),
+            Expression::Assignment(left, right) => write!(f, "{} = {}", left, right),
+            Expression::Conditional(cond, a, b) => write!(f, "{} ? {} : {}", cond, a, b),
+            Expression::Var(ident) => write!(f, "Var({})", ident.name),
+            Expression::Constant(val) => write!(f, "Constant({})", val),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, DisplayTree, EnumIs)]
 #[allow(dead_code)]
 pub enum BinaryOperator {
     Add,
@@ -632,6 +736,30 @@ impl BinaryOperator {
             &BinaryOperator::And | &BinaryOperator::Or => true,
             _ => false,
         }
+    }
+}
+
+impl fmt::Display for BinaryOperator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                BinaryOperator::Add => "+",
+                BinaryOperator::Subtract => "-",
+                BinaryOperator::Multiply => "*",
+                BinaryOperator::Divide => "/",
+                BinaryOperator::Remainder => "%",
+                BinaryOperator::And => "&&",
+                BinaryOperator::Or => "||",
+                BinaryOperator::Equal => "==",
+                BinaryOperator::NotEqual => "!=",
+                BinaryOperator::LessEqualThan => "<=",
+                BinaryOperator::GreaterEqualThan => ">=",
+                BinaryOperator::LessThan => "<",
+                BinaryOperator::GreaterThan => ">",
+            }
+        )
     }
 }
 
@@ -682,6 +810,14 @@ impl Identifier {
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)
+    }
+}
+
+fn option_ident_to_string(ident: &Option<Identifier>) -> String {
+    if let Some(ident) = ident {
+        ident.to_string()
+    } else {
+        "None".to_string()
     }
 }
 
