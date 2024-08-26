@@ -40,6 +40,7 @@ static IF_RE: &str = r"if\b";
 static ELSE_RE: &str = r"else\b";
 static QUESTION_RE: &str = r"\?";
 static COLON_RE: &str = r":";
+static COMMA_RE: &str = r"\,";
 
 // NOTE: The tokenizer will try tokens in-order based on this list
 // It *must* be ordered longest-match first
@@ -79,6 +80,7 @@ pub enum TokenKind {
     Else,
     Question,
     Colon,
+    Comma,
     Identifier(String),
     Constant(i64),
 }
@@ -136,6 +138,7 @@ impl TokenKind {
             input if TokenKind::is_full_match(input, ELSE_RE) => Some(Self::Else),
             input if TokenKind::is_full_match(input, QUESTION_RE) => Some(Self::Question),
             input if TokenKind::is_full_match(input, COLON_RE) => Some(Self::Colon),
+            input if TokenKind::is_full_match(input, COMMA_RE) => Some(Self::Comma),
             input if TokenKind::is_full_match(input, CONSTANT_RE) => {
                 Some(Self::Constant(input.parse::<i64>().unwrap()))
             }
@@ -184,6 +187,7 @@ impl TokenKind {
             Self::Else => Regex::new(ELSE_RE),
             Self::Question => Regex::new(QUESTION_RE),
             Self::Colon => Regex::new(COLON_RE),
+            Self::Comma => Regex::new(COMMA_RE),
         }
         .unwrap()
     }

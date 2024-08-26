@@ -5,112 +5,140 @@ use std::mem::discriminant;
 use std::{error::Error, fmt};
 use strum_macros::{Display, EnumIs};
 
-#[inline(always)]
-fn log_trace(msg: &str, tokens: &mut VecDeque<TokenKind>) {
-    log::trace!(
-        "{} {:?}",
-        msg,
-        tokens.iter().take(4).collect::<Vec<&TokenKind>>()
-    );
-}
-
-#[derive(Debug)]
-pub enum ParserError {
-    UnexpectedToken,
-    NoTokens,
-    MalformedExpression,
-    IdentifierParsingError,
-}
-
-impl fmt::Display for ParserError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl Error for ParserError {}
-
-#[inline(always)]
-fn expect_token_silent(
-    expected: TokenKind,
-    tokens: &mut VecDeque<TokenKind>,
-) -> Result<TokenKind, ParserError> {
-    let exp = discriminant(&expected);
-    let actual = discriminant(&tokens[0]);
-
-    if actual != exp {
-        Err(ParserError::UnexpectedToken)
-    } else {
-        Ok(tokens.pop_front().unwrap())
-    }
-}
-
-#[inline(always)]
-fn expect_token(
-    expected: TokenKind,
-    tokens: &mut VecDeque<TokenKind>,
-) -> Result<TokenKind, ParserError> {
-    let result = expect_token_silent(expected.clone(), tokens);
-    if let Err(_) = result {
-        log::error!(
-            "Syntax Error: Expected {:?}, got {:?}",
-            &expected,
-            &tokens[0]
-        );
-    }
-    result
-}
-
-#[derive(Debug, PartialEq, DisplayTree)]
+#[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 pub struct Program {
-    #[tree]
-    pub body: Function,
+    pub body: Vec<FunctionDeclaration>,
 }
 
 impl Program {
     pub fn parse(tokens: Vec<TokenKind>) -> Program {
         let mut tokens = VecDeque::from(tokens);
+        let mut body = vec![];
 
-        // TODO: better error handling here
-        let program = Program {
-            body: Function::parse(&mut tokens).unwrap(),
-        };
-
-        if !tokens.is_empty() {
-            panic!("Syntax Error: Unexpected token {:?}", tokens[0]);
+        while !tokens.is_empty() {
+            match FunctionDeclaration::parse(&mut tokens) {
+                Ok(func) => body.push(func),
+                Err(err) => {
+                    log::error!("Error reason: {}", err);
+                    panic!("Could not parse AST");
+                }
+            }
         }
 
-        program
+        Program { body }
     }
 }
 
-#[derive(Debug, PartialEq, Clone, DisplayTree)]
-#[allow(dead_code)]
-pub struct Function {
-    pub name: Identifier,
-    pub return_type: String,
-    #[tree]
-    pub body: Block,
+impl DisplayTree for Program {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>, style: display_tree::Style) -> std::fmt::Result {
+        for function in &self.body {
+            writeln!(
+                f,
+                "{}{} {}",
+                style.char_set.connector,
+                std::iter::repeat(style.char_set.horizontal)
+                    .take(style.indentation as usize)
+                    .collect::<String>(),
+                display_tree::format_tree!(*function)
+            )?;
+        }
+        Ok(())
+    }
 }
 
-impl Function {
-    fn parse(tokens: &mut VecDeque<TokenKind>) -> Result<Function, ParserError> {
+#[derive(Debug, PartialEq, Clone)]
+#[allow(dead_code)]
+pub struct FunctionDeclaration {
+    pub name: Identifier,
+    pub params: Vec<Identifier>,
+    pub return_type: String,
+    pub body: Option<Block>,
+}
+
+impl FunctionDeclaration {
+    fn parse(tokens: &mut VecDeque<TokenKind>) -> Result<FunctionDeclaration, ParserError> {
+        log_trace("parsing function from", tokens);
         let return_type = expect_token(TokenKind::Int, tokens)?;
 
         let name = Identifier::parse(expect_token(TokenKind::Identifier("".to_owned()), tokens)?)?;
 
         expect_token(TokenKind::ParenOpen, tokens)?;
-        expect_token(TokenKind::Void, tokens)?;
+
+        let mut params = vec![];
+
+        // Parse parameters if any are present
+        while !tokens.front().unwrap().is_paren_close() && !tokens.front().unwrap().is_void() {
+            if tokens.front().unwrap().is_comma() {
+                expect_token(TokenKind::Comma, tokens)?;
+            }
+            let mut param_result = || -> Result<Identifier, ParserError> {
+                expect_token(TokenKind::Int, tokens)?;
+                Identifier::parse(expect_token(TokenKind::Identifier("".to_owned()), tokens)?)
+            };
+
+            if let Ok(ident) = param_result() {
+                params.push(ident);
+            } else {
+                return Err(ParserError::TrailingComma);
+            }
+        }
+
+        if params.len() == 0 {
+            expect_token(TokenKind::Void, tokens)?;
+        }
         expect_token(TokenKind::ParenClose, tokens)?;
 
-        let body = Block::parse(tokens)?;
+        let body = if tokens.front().unwrap().is_brace_open() {
+            Some(Block::parse(tokens)?)
+        } else {
+            expect_token(TokenKind::Semicolon, tokens)?;
+            None
+        };
 
-        Ok(Function {
+        let func = FunctionDeclaration {
             name,
+            params,
             return_type: return_type.to_string(),
             body,
-        })
+        };
+
+        log::trace!("--- Parsed function declaration: {}", func);
+        Ok(func)
+    }
+}
+
+impl fmt::Display for FunctionDeclaration {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let params = self
+            .params
+            .iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<String>>()
+            .join(",");
+        writeln!(f, "{} {}({})", self.return_type, self.name, params)?;
+        if let Some(body) = &self.body {
+            writeln!(f, "\t{}", body)?;
+        }
+        Ok(())
+    }
+}
+
+impl DisplayTree for FunctionDeclaration {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>, style: display_tree::Style) -> std::fmt::Result {
+        writeln!(f, "{} {} ({:?})", self.return_type, self.name, self.params)?;
+        if let Some(body) = &self.body {
+            writeln!(
+                f,
+                "{}{} {}",
+                style.char_set.connector,
+                std::iter::repeat(style.char_set.horizontal)
+                    .take(style.indentation as usize)
+                    .collect::<String>(),
+                display_tree::format_tree!(*body)
+            )?;
+        }
+        Ok(())
     }
 }
 
@@ -175,7 +203,6 @@ impl BlockItem {
         let token = tokens.front().unwrap().to_owned();
         Ok(if token.is_int() {
             let decl = Declaration::parse(tokens)?;
-            expect_token(TokenKind::Semicolon, tokens)?;
             BlockItem::Decl(decl)
         } else {
             BlockItem::Stmt(Statement::parse(tokens)?)
@@ -192,14 +219,39 @@ impl fmt::Display for BlockItem {
     }
 }
 
+#[derive(Debug, PartialEq, Clone, DisplayTree)]
+pub enum Declaration {
+    FunDecl(#[tree] FunctionDeclaration),
+    VarDecl(#[tree] VariableDeclaration),
+}
+
+impl Declaration {
+    fn parse(tokens: &mut VecDeque<TokenKind>) -> Result<Self, ParserError> {
+        // If the 3rd token is a '(', we're looking at a function declaration
+        if tokens.get(2).unwrap().is_paren_open() {
+            Ok(Self::FunDecl(FunctionDeclaration::parse(tokens)?))
+        } else {
+            Ok(Self::VarDecl(VariableDeclaration::parse(tokens)?))
+        }
+    }
+}
+
+impl fmt::Display for Declaration {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Declaration::FunDecl(decl) => write!(f, "{:?}", decl),
+            Declaration::VarDecl(decl) => write!(f, "{}", decl),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
-#[allow(dead_code)]
-pub struct Declaration {
+pub struct VariableDeclaration {
     pub name: Identifier,
     pub init: Option<Expression>,
 }
 
-impl Declaration {
+impl VariableDeclaration {
     fn parse(tokens: &mut VecDeque<TokenKind>) -> Result<Self, ParserError> {
         log_trace("Parsing declaration from", tokens);
         // Silent expect here because we can use this failing to check
@@ -215,6 +267,7 @@ impl Declaration {
             expect_token(TokenKind::Assignment, tokens)?;
             Some(Expression::parse(tokens, 0)?)
         };
+        expect_token(TokenKind::Semicolon, tokens)?;
 
         let result = Self { name: ident, init };
         log::trace!("-- Parsed declaration: {}", result);
@@ -222,7 +275,7 @@ impl Declaration {
     }
 }
 
-impl fmt::Display for Declaration {
+impl fmt::Display for VariableDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "int {}", self.name)?;
         if let Some(init) = &self.init {
@@ -234,7 +287,7 @@ impl fmt::Display for Declaration {
     }
 }
 
-impl DisplayTree for Declaration {
+impl DisplayTree for VariableDeclaration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>, style: display_tree::Style) -> std::fmt::Result {
         writeln!(f, "{}", self.name)?;
         if let Some(init) = &self.init {
@@ -514,7 +567,6 @@ impl Statement {
                 expect_token(TokenKind::For, tokens)?;
                 expect_token(TokenKind::ParenOpen, tokens)?;
                 let init = ForInit::parse(tokens)?;
-                expect_token(TokenKind::Semicolon, tokens)?;
                 let cond = Expression::parse_optional(tokens)?;
                 expect_token(TokenKind::Semicolon, tokens)?;
                 let post = Expression::parse_optional(tokens)?;
@@ -547,20 +599,23 @@ impl Statement {
 #[derive(Debug, PartialEq, Clone, DisplayTree)]
 #[allow(dead_code)]
 pub enum ForInit {
-    InitDecl(#[tree] Declaration),
+    InitDecl(#[tree] VariableDeclaration),
     InitExp(#[tree] Expression),
     InitNull,
 }
 
 impl ForInit {
     fn parse(tokens: &mut VecDeque<TokenKind>) -> Result<Self, ParserError> {
-        Ok(if let Ok(decl) = Declaration::parse(tokens) {
+        let result = if let Ok(decl) = VariableDeclaration::parse(tokens) {
             Self::InitDecl(decl)
         } else if let Ok(exp) = Expression::parse(tokens, 0) {
+            expect_token(TokenKind::Semicolon, tokens)?;
             Self::InitExp(exp)
         } else {
+            expect_token(TokenKind::Semicolon, tokens)?;
             Self::InitNull
-        })
+        };
+        Ok(result)
     }
 }
 
@@ -591,6 +646,7 @@ pub enum Expression {
         #[tree] Box<Expression>,
         #[tree] Box<Expression>,
     ),
+    FunctionCall(Identifier, #[ignore_field] Vec<Expression>),
 }
 
 impl Expression {
@@ -642,7 +698,29 @@ impl Expression {
         let token = tokens.front().unwrap().to_owned();
 
         if token.is_identifier() {
-            return Ok(Self::Var(Identifier::parse(tokens.pop_front().unwrap())?));
+            // If we have a '(' after an identifier, it's a function call
+            return Ok(if tokens.get(1).unwrap().is_paren_open() {
+                let name = Identifier::parse(tokens.pop_front().unwrap())?;
+                expect_token(TokenKind::ParenOpen, tokens)?;
+                let mut args = vec![];
+
+                // Parse arguments if any are present
+                while !tokens.front().unwrap().is_paren_close() {
+                    if tokens.front().unwrap().is_comma() {
+                        expect_token(TokenKind::Comma, tokens)?;
+                    }
+                    if let Ok(exp) = Expression::parse(tokens, 0) {
+                        args.push(exp);
+                    } else {
+                        return Err(ParserError::TrailingComma);
+                    }
+                }
+                expect_token(TokenKind::ParenClose, tokens)?;
+
+                Self::FunctionCall(name, args)
+            } else {
+                Self::Var(Identifier::parse(tokens.pop_front().unwrap())?)
+            });
         }
 
         if token.is_constant() {
@@ -687,6 +765,7 @@ impl fmt::Display for Expression {
             Expression::Conditional(cond, a, b) => write!(f, "{} ? {} : {}", cond, a, b),
             Expression::Var(ident) => write!(f, "Var({})", ident.name),
             Expression::Constant(val) => write!(f, "Constant({})", val),
+            Expression::FunctionCall(name, args) => write!(f, "{}({:?})", name, args),
         }
     }
 }
@@ -821,6 +900,63 @@ fn option_ident_to_string(ident: &Option<Identifier>) -> String {
     }
 }
 
+#[inline(always)]
+fn log_trace(msg: &str, tokens: &mut VecDeque<TokenKind>) {
+    log::trace!(
+        "{} {:?}",
+        msg,
+        tokens.iter().take(4).collect::<Vec<&TokenKind>>()
+    );
+}
+
+#[derive(Debug)]
+pub enum ParserError {
+    UnexpectedToken,
+    NoTokens,
+    MalformedExpression,
+    IdentifierParsingError,
+    TrailingComma,
+}
+
+impl fmt::Display for ParserError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl Error for ParserError {}
+
+#[inline(always)]
+fn expect_token_silent(
+    expected: TokenKind,
+    tokens: &mut VecDeque<TokenKind>,
+) -> Result<TokenKind, ParserError> {
+    let exp = discriminant(&expected);
+    let actual = discriminant(&tokens[0]);
+
+    if actual != exp {
+        Err(ParserError::UnexpectedToken)
+    } else {
+        Ok(tokens.pop_front().unwrap())
+    }
+}
+
+#[inline(always)]
+fn expect_token(
+    expected: TokenKind,
+    tokens: &mut VecDeque<TokenKind>,
+) -> Result<TokenKind, ParserError> {
+    let result = expect_token_silent(expected.clone(), tokens);
+    if let Err(_) = result {
+        log::error!(
+            "Syntax Error: Expected {:?}, got {:?}",
+            &expected,
+            &tokens[0]
+        );
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -840,16 +976,17 @@ mod tests {
             TokenKind::BraceClose,
         ];
 
-        let function_expected = Function {
+        let function_expected = FunctionDeclaration {
             name: Identifier::new("main"),
+            params: vec![],
             return_type: "Int".to_owned(),
-            body: Block {
+            body: Some(Block {
                 body: vec![BlockItem::Stmt(Statement::Return(Expression::Constant(7)))],
-            },
+            }),
         };
 
         let program_expected = Program {
-            body: function_expected,
+            body: vec![function_expected],
         };
 
         assert_eq!(Program::parse(tokens), program_expected);
@@ -870,15 +1007,19 @@ mod tests {
             TokenKind::BraceClose,
         ]);
 
-        let function_expected = Function {
+        let function_expected = FunctionDeclaration {
             name: Identifier::new("main"),
+            params: vec![],
             return_type: "Int".to_owned(),
-            body: Block {
+            body: Some(Block {
                 body: vec![BlockItem::Stmt(Statement::Return(Expression::Constant(6)))],
-            },
+            }),
         };
 
-        assert_eq!(Function::parse(&mut tokens).unwrap(), function_expected);
+        assert_eq!(
+            FunctionDeclaration::parse(&mut tokens).unwrap(),
+            function_expected
+        );
         assert!(tokens.is_empty());
     }
 
