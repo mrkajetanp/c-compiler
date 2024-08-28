@@ -1,5 +1,6 @@
 use clap::Parser;
 use log::LevelFilter;
+use std::process::ExitCode;
 
 use rcc::*;
 
@@ -43,7 +44,7 @@ fn setup_logging(level: LevelFilter) {
     builder.init();
 }
 
-fn main() {
+fn main() -> ExitCode {
     let cli = Cli::parse();
 
     setup_logging(if cli.trace {
@@ -70,5 +71,12 @@ fn main() {
 
     let driver = Driver::new(&cli.path);
     log::info!("Building {}", cli.path);
-    driver.compile(stage, cli.llvm);
+
+    match driver.compile(stage, cli.llvm) {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(err) => {
+            log::error!("{}", err);
+            ExitCode::FAILURE
+        }
+    }
 }

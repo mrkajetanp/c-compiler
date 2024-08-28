@@ -7,6 +7,7 @@ use std::io::{Error, Write};
 use std::process::Command;
 use strum::EnumIs;
 use synoptic;
+use thiserror::Error;
 
 pub mod ast;
 pub mod codegen;
@@ -19,6 +20,12 @@ pub mod semantic;
 use cfg_if::cfg_if;
 
 use lexer::TokenKind;
+
+#[derive(Error, Debug)]
+pub enum ErrorKind {
+    #[error("Semantic Analysis Failed")]
+    SemanticError,
+}
 
 #[derive(PartialEq, EnumIs, Clone, Copy)]
 pub enum CompileStage {
@@ -43,7 +50,7 @@ impl Driver {
         }
     }
 
-    pub fn compile(&self, stage: CompileStage, _llvm: bool) {
+    pub fn compile(&self, stage: CompileStage, _llvm: bool) -> Result<(), ErrorKind> {
         let preprocessed_path = self.preprocess();
         let source = fs::read_to_string(preprocessed_path).unwrap();
         self.clean_preprocessed().unwrap();
@@ -55,21 +62,21 @@ impl Driver {
         log::debug!("Tokens:\n{:?}\n", &tokens);
 
         if stage.is_lex() {
-            return;
+            return Ok(());
         }
 
         let ast = self.parse(tokens);
         log::debug!("Parsed AST:\n{}\n", format_tree!(ast));
 
         if stage.is_parse() {
-            return;
+            return Ok(());
         }
 
-        let ast = ast.validate();
+        let ast = ast.validate().map_err(|_| ErrorKind::SemanticError)?;
         log::debug!("Validated AST:\n{}\n", format_tree!(ast));
 
         if stage.is_validate() {
-            return;
+            return Ok(());
         }
 
         let asm_path: Option<String>;
@@ -89,6 +96,8 @@ impl Driver {
             self.assemble(&p);
             self.clean_asm().unwrap();
         }
+
+        Ok(())
     }
 
     pub fn asm_path(&self, ast: ast::Program, stage: CompileStage) -> Option<String> {
