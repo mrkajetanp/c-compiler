@@ -324,7 +324,11 @@ impl ast::VariableDeclaration {
             IdentifierMapEntry::new_variable(name.to_string()),
         );
 
-        let init = self.init.map(|exp| exp.resolve(ctx, identifiers).unwrap());
+        let init = if let Some(exp) = self.init {
+            Some(exp.resolve(ctx, identifiers)?)
+        } else {
+            None
+        };
         Ok(Self { name, init })
     }
 }
@@ -364,8 +368,16 @@ impl ast::Statement {
             Self::For(init, cond, post, body, label) => {
                 let mut new_identifiers = clone_identifier_map(identifiers);
                 let init = init.resolve(ctx, &mut new_identifiers)?;
-                let cond = cond.map(|exp| exp.resolve(ctx, &mut new_identifiers).unwrap());
-                let post = post.map(|exp| exp.resolve(ctx, &mut new_identifiers).unwrap());
+                let cond = if let Some(exp) = cond {
+                    Some(exp.resolve(ctx, &mut new_identifiers)?)
+                } else {
+                    None
+                };
+                let post = if let Some(exp) = post {
+                    Some(exp.resolve(ctx, &mut new_identifiers)?)
+                } else {
+                    None
+                };
                 let body = body.resolve(ctx, &mut new_identifiers)?;
                 Self::For(init, cond, post, Box::new(body), label)
             }
@@ -383,7 +395,11 @@ impl ast::Statement {
             Self::Compound(body) => Self::Compound(body.label(ctx, current_label)?),
             Self::If(cond, then_stmt, else_stmt) => {
                 let then_stmt = then_stmt.label(ctx, current_label.clone())?;
-                let else_stmt = else_stmt.map(|s| Box::new(s.label(ctx, current_label).unwrap()));
+                let else_stmt = if let Some(stmt) = else_stmt {
+                    Some(Box::new(stmt.label(ctx, current_label)?))
+                } else {
+                    None
+                };
                 Self::If(cond, Box::new(then_stmt), else_stmt)
             }
             Self::Break(_) => {
@@ -486,8 +502,8 @@ impl ast::Expression {
                 if let Ok(ident) = ctx.get_unique_ident(&name, identifiers) {
                     let args = args
                         .into_iter()
-                        .map(|arg| arg.resolve(ctx, identifiers).unwrap())
-                        .collect();
+                        .map(|arg| arg.resolve(ctx, identifiers))
+                        .collect::<SemanticResult<Vec<Expression>>>()?;
                     Self::FunctionCall(ident, args)
                 } else {
                     return Err(SemanticError::UndeclaredFunction(name.to_string()));
