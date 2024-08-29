@@ -16,6 +16,7 @@ pub mod lexer;
 #[cfg(feature = "llvm")]
 pub mod llvm_ir;
 pub mod semantic;
+pub mod typecheck;
 
 use cfg_if::cfg_if;
 
@@ -25,6 +26,8 @@ use lexer::TokenKind;
 pub enum ErrorKind {
     #[error("Semantic Analysis Failed")]
     SemanticError,
+    #[error("Type Checking Failed")]
+    TypeCheckError,
 }
 
 #[derive(PartialEq, EnumIs, Clone, Copy)]
@@ -73,6 +76,8 @@ impl Driver {
         }
 
         let ast = ast.validate().map_err(|_| ErrorKind::SemanticError)?;
+        log::trace!("Resolved and labelled AST:\n{}\n", format_tree!(ast));
+        let ast = ast.typecheck().map_err(|_| ErrorKind::TypeCheckError)?;
         log::debug!("Validated AST:\n{}\n", format_tree!(ast));
 
         if stage.is_validate() {

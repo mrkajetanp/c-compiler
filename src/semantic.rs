@@ -194,7 +194,7 @@ impl ast::FunctionDeclaration {
                         IdentifierMapEntry::new_variable(param.to_string()),
                     );
 
-                    Ok(p)
+                    Ok(param)
                 })
                 .collect::<SemanticResult<Vec<ast::Identifier>>>()?,
             return_type: self.return_type,

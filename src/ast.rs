@@ -863,7 +863,7 @@ impl UnaryOperator {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, DisplayTree)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, DisplayTree)]
 #[allow(dead_code)]
 pub struct Identifier {
     #[node_label]
