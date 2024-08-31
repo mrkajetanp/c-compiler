@@ -36,28 +36,28 @@ fn test_basic_lex() {
 #[serial]
 fn test_basic_parse() {
     let driver = Driver::new(BASIC_SAMPLE);
-    driver.compile(CompileStage::Parse, false);
+    driver.compile(CompileStage::Parse, true, false).unwrap();
 }
 
 #[test]
 #[serial]
 fn test_basic_ir() {
     let driver = Driver::new(BASIC_SAMPLE);
-    driver.compile(CompileStage::IR, false);
+    driver.compile(CompileStage::IR, true, false).unwrap();
 }
 
 #[test]
 #[serial]
 fn test_basic_codegen() {
     let driver = Driver::new(BASIC_SAMPLE);
-    driver.compile(CompileStage::Codegen, false);
+    driver.compile(CompileStage::Codegen, true, false).unwrap();
 }
 
 #[test]
 #[serial]
 fn test_basic_full() {
     let driver = Driver::new(BASIC_SAMPLE);
-    driver.compile(CompileStage::Full, false);
+    driver.compile(CompileStage::Full, true, false).unwrap();
     driver.clean_binary().unwrap();
 }
 
@@ -93,27 +93,27 @@ fn test_unary_lex() {
 #[serial]
 fn test_unary_parse() {
     let driver = Driver::new(UNARY_SAMPLE);
-    driver.compile(CompileStage::Parse, false);
+    driver.compile(CompileStage::Parse, true, false).unwrap();
 }
 
 #[test]
 #[serial]
 fn test_unary_ir() {
     let driver = Driver::new(UNARY_SAMPLE);
-    driver.compile(CompileStage::IR, false);
+    driver.compile(CompileStage::IR, true, false).unwrap();
 }
 
 #[test]
 #[serial]
 fn test_unary_codegen() {
     let driver = Driver::new(UNARY_SAMPLE);
-    driver.compile(CompileStage::Codegen, false);
+    driver.compile(CompileStage::Codegen, true, false).unwrap();
 }
 
 #[test]
 #[serial]
 fn test_unary_full() {
     let driver = Driver::new(UNARY_SAMPLE);
-    driver.compile(CompileStage::Full, false);
+    driver.compile(CompileStage::Full, true, false).unwrap();
     driver.clean_binary().unwrap();
 }

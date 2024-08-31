@@ -14,21 +14,21 @@ static DIV_SAMPLE: &str = "samples/div.c";
 #[serial]
 fn basic_ir() {
     let driver = Driver::new(BASIC_SAMPLE);
-    driver.compile(CompileStage::IR, true);
+    driver.compile(CompileStage::IR, true, true).unwrap();
 }
 
 #[test]
 #[serial]
 fn basic_codegen() {
     let driver = Driver::new(BASIC_SAMPLE);
-    driver.compile(CompileStage::Codegen, true);
+    driver.compile(CompileStage::Codegen, true, true).unwrap();
 }
 
 #[test]
 #[serial]
 fn basic_full() {
     let driver = Driver::new(BASIC_SAMPLE);
-    driver.compile(CompileStage::Full, true);
+    driver.compile(CompileStage::Full, true, true).unwrap();
     driver.clean_binary().unwrap();
 }
 
@@ -38,21 +38,21 @@ fn basic_full() {
 #[serial]
 fn unary_ir() {
     let driver = Driver::new(UNARY_SAMPLE);
-    driver.compile(CompileStage::IR, true);
+    driver.compile(CompileStage::IR, true, true).unwrap();
 }
 
 #[test]
 #[serial]
 fn unary_codegen() {
     let driver = Driver::new(UNARY_SAMPLE);
-    driver.compile(CompileStage::Codegen, true);
+    driver.compile(CompileStage::Codegen, true, true).unwrap();
 }
 
 #[test]
 #[serial]
 fn unary_full() {
     let driver = Driver::new(UNARY_SAMPLE);
-    driver.compile(CompileStage::Full, true);
+    driver.compile(CompileStage::Full, true, true).unwrap();
     driver.clean_binary().unwrap();
 }
 
@@ -62,21 +62,21 @@ fn unary_full() {
 #[serial]
 fn binary_ir() {
     let driver = Driver::new(BINARY_SAMPLE);
-    driver.compile(CompileStage::IR, true);
+    driver.compile(CompileStage::IR, true, true).unwrap();
 }
 
 #[test]
 #[serial]
 fn binary_codegen() {
     let driver = Driver::new(BINARY_SAMPLE);
-    driver.compile(CompileStage::Codegen, true);
+    driver.compile(CompileStage::Codegen, true, true).unwrap();
 }
 
 #[test]
 #[serial]
 fn binary_full() {
     let driver = Driver::new(BINARY_SAMPLE);
-    driver.compile(CompileStage::Full, true);
+    driver.compile(CompileStage::Full, true, true).unwrap();
     driver.clean_binary().unwrap();
 }
 
@@ -86,20 +86,20 @@ fn binary_full() {
 #[serial]
 fn div_ir() {
     let driver = Driver::new(DIV_SAMPLE);
-    driver.compile(CompileStage::IR, true);
+    driver.compile(CompileStage::IR, true, true).unwrap();
 }
 
 #[test]
 #[serial]
 fn div_codegen() {
     let driver = Driver::new(DIV_SAMPLE);
-    driver.compile(CompileStage::Codegen, true);
+    driver.compile(CompileStage::Codegen, true, true).unwrap();
 }
 
 #[test]
 #[serial]
 fn div_full() {
     let driver = Driver::new(DIV_SAMPLE);
-    driver.compile(CompileStage::Full, true);
+    driver.compile(CompileStage::Full, true, true).unwrap();
     driver.clean_binary().unwrap();
 }
