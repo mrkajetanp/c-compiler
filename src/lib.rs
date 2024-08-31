@@ -28,6 +28,10 @@ pub enum ErrorKind {
     SemanticError,
     #[error("Type Checking Failed")]
     TypeCheckError,
+    #[error("Asm Emission Failed")]
+    AsmEmitError,
+    #[error("IO Error")]
+    IOError,
 }
 
 #[derive(PartialEq, EnumIs, Clone, Copy)]
@@ -53,7 +57,7 @@ impl Driver {
         }
     }
 
-    pub fn compile(&self, stage: CompileStage, _llvm: bool) -> Result<(), ErrorKind> {
+    pub fn compile(&self, stage: CompileStage, link: bool, _llvm: bool) -> Result<(), ErrorKind> {
         let preprocessed_path = self.preprocess();
         let source = fs::read_to_string(preprocessed_path).unwrap();
         self.clean_preprocessed().unwrap();
@@ -98,7 +102,7 @@ impl Driver {
         }
 
         if let Some(p) = asm_path {
-            self.assemble(&p);
+            self.assemble(&p, link);
             self.clean_asm().unwrap();
         }
 
@@ -151,17 +155,18 @@ impl Driver {
         codegen::Program::codegen(ir)
     }
 
-    fn emit(&self, code: codegen::Program) -> Result<String, Error> {
+    fn emit(&self, code: codegen::Program) -> Result<String, ErrorKind> {
         let output_path = format!("{}.s", self.name);
-        let asm = code.emit();
+        let asm = code.emit().map_err(|_| ErrorKind::AsmEmitError)?;
 
         if log::log_enabled!(log::Level::Debug) {
             log::debug!("Emitted asm:");
             Driver::print_asm_with_highlight(&asm);
         }
 
-        let mut file = fs::File::create(&output_path)?;
-        file.write_all(asm.as_bytes())?;
+        let mut file = fs::File::create(&output_path).map_err(|_| ErrorKind::IOError)?;
+        file.write_all(asm.as_bytes())
+            .map_err(|_| ErrorKind::IOError)?;
 
         Ok(output_path)
     }
@@ -198,9 +203,21 @@ impl Driver {
         }
     }
 
-    fn assemble(&self, path: &str) {
-        let _ = Command::new("gcc")
-            .args([path, "-masm=intel", "-o", &self.name])
+    fn assemble(&self, path: &str, link: bool) {
+        let out_name = if link {
+            self.name.clone()
+        } else {
+            format!("{}.o", self.name)
+        };
+
+        let args = if link {
+            vec![path, "-masm=intel", "-g", "-o", &out_name]
+        } else {
+            vec!["-c", path, "-masm=intel", "-g", "-o", &out_name]
+        };
+
+        Command::new("gcc")
+            .args(args)
             .status()
             .expect("Failed to run the assembler");
     }

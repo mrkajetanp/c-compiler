@@ -1,37 +1,58 @@
 use strum::EnumIs;
+use thiserror::Error;
 
-use crate::ir;
+use crate::ir::{self};
 use std::collections::HashMap;
 use std::fmt;
+
+#[derive(Error, Debug)]
+pub enum CodegenError {
+    #[error("Pseudo-operand in emit stage: {0}")]
+    PseudoOperandInEmit(String),
+}
+
+type CodegenResult<T> = Result<T, CodegenError>;
 
 #[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 pub struct Program {
-    body: Function,
+    body: Vec<Function>,
 }
 
 impl Program {
     pub fn codegen(program: ir::Program) -> Program {
         Program {
-            body: Function::codegen(program.body),
+            body: program
+                .body
+                .into_iter()
+                .map(|f| Function::codegen(f))
+                .collect(),
         }
     }
 
-    pub fn emit(&self) -> String {
+    pub fn emit(&self) -> CodegenResult<String> {
         let mut result = String::new();
 
         result.push_str(&format!(".intel_syntax noprefix\n\n"));
-        result.push_str(&self.body.emit());
+        for f in &self.body {
+            result.push_str(&f.emit()?);
+            result.push_str("\n\n");
+        }
         result.push_str("\n\n.section .note.GNU-stack,\"\",@progbits\n");
-        result.push_str(&format!(".globl {}\n", self.body.name));
+        for f in &self.body {
+            result.push_str(&format!(".globl {}\n", f.name));
+        }
 
-        result
+        Ok(result)
     }
 }
 
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.emit())
+        match self.emit() {
+            Ok(prog) => write!(f, "{}", prog),
+            Err(err) => write!(f, "{}", err),
+        }
     }
 }
 
@@ -45,16 +66,62 @@ pub struct Function {
 
 impl Function {
     pub fn codegen(function: ir::Function) -> Self {
-        let instructions = function
-            .instructions
+        let params_len = function.params.len();
+        let prologue_stack_size = if params_len > 6 {
+            (params_len - 6 + 1) * 8
+        } else {
+            8
+        };
+        let instructions: Vec<Instruction> = function
+            .params
             .into_iter()
-            .flat_map(|instr| Instruction::codegen(instr))
+            .enumerate()
+            .map(|(idx, param)| {
+                // Index arguments from 1 - easier to do stack size maths
+                let idx = idx + 1;
+                let param_location = match idx {
+                    1 => Operand::Reg(Register::DI),
+                    2 => Operand::Reg(Register::SI),
+                    3 => Operand::Reg(Register::DX),
+                    4 => Operand::Reg(Register::CX),
+                    5 => Operand::Reg(Register::R8),
+                    6 => Operand::Reg(Register::R9),
+                    // Positive addresses here because parameter values
+                    // Will have been pushed *above* the new rbp
+                    _ => Operand::Stack((idx as i64 - 6 + 1) * 8),
+                };
+                let operand = Operand::Pseudo(Identifier::codegen(param));
+                let result = Instruction::Mov(operand, param_location);
+                log::trace!("--- Generating {:?}", result);
+                result
+            })
+            // // Insert a label to separate instructions for function arguments
+            // // From the actual function body
+            // .chain([Instruction::Label(Identifier::new(&format!(
+            //     "{}_body",
+            //     function.name
+            // )))])
+            .chain(
+                function
+                    .instructions
+                    .into_iter()
+                    .flat_map(|instr| Instruction::codegen(instr)),
+            )
             .collect();
+
+        log::trace!(
+            "--- Generated instructions:\n{}",
+            instructions
+                .iter()
+                .map(|i| format!("{:?}", i))
+                .collect::<Vec<String>>()
+                .join("\n")
+        );
 
         Self {
             name: Identifier::codegen(function.name),
             instructions,
-            stack_pos: 0,
+            stack_pos: -(prologue_stack_size as i64),
         }
         .replace_pseudo()
         .fixup()
@@ -73,6 +140,9 @@ impl Function {
     }
 
     fn fixup(mut self) -> Self {
+        // Round up to nearest multiple of 16 to align for calls
+        // TODO: this whole mess with negative i64/usize stack pos needs to end
+        self.stack_pos = -(((-self.stack_pos + 15) / 16) * 16);
         self.instructions
             .insert(0, Instruction::AllocateStack(-self.stack_pos));
 
@@ -85,7 +155,7 @@ impl Function {
         self
     }
 
-    pub fn emit(&self) -> String {
+    pub fn emit(&self) -> CodegenResult<String> {
         let mut result = String::new();
 
         result.push_str(&format!("{}:\n", self.name));
@@ -93,16 +163,19 @@ impl Function {
         result.push_str(&format!("\t{}\n", "push rbp"));
         result.push_str(&format!("\t{}\n", "mov rbp, rsp"));
         for instr in &self.instructions {
-            result.push_str(&instr.emit());
+            result.push_str(&instr.emit()?);
         }
 
-        result
+        Ok(result)
     }
 }
 
 impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.emit())
+        match self.emit() {
+            Ok(func) => write!(f, "{}", func),
+            Err(err) => write!(f, "{}", err),
+        }
     }
 }
 
@@ -120,6 +193,9 @@ pub enum Instruction {
     SetCC(CondCode, Operand),
     Label(Identifier),
     AllocateStack(i64),
+    DeallocateStack(i64),
+    Push(Operand),
+    Call(Identifier),
     Ret,
 }
 
@@ -205,6 +281,63 @@ impl Instruction {
                 instructions.push(Self::Cmp(cond, Operand::Immediate(0)));
                 instructions.push(Self::JmpCC(CondCode::NE, Identifier::codegen(target)));
             }
+            ir::Instruction::FnCall(name, args, dst) => {
+                let registers = [
+                    Register::DI,
+                    Register::SI,
+                    Register::DX,
+                    Register::CX,
+                    Register::R8,
+                    Register::R9,
+                ];
+                let register_args;
+                let stack_args;
+
+                if args.len() > 6 {
+                    register_args = args[..6].to_vec();
+                    stack_args = args[6..].to_vec();
+                } else {
+                    register_args = args;
+                    stack_args = vec![];
+                };
+
+                // Align the stack for the function call
+                let stack_padding = if stack_args.len() % 2 != 0 { 8 } else { 0 };
+                if stack_padding != 0 {
+                    instructions.push(Self::AllocateStack(stack_padding));
+                }
+
+                // Put register-passed arguments into their registers
+                for (idx, arg) in register_args.iter().enumerate() {
+                    let reg = registers[idx];
+                    let asm_arg = Operand::from_val(arg.to_owned());
+                    instructions.push(Instruction::Mov(Operand::Reg(reg), asm_arg));
+                }
+
+                // Put stack-passed arguments on the stack
+                for arg in stack_args.iter().rev() {
+                    let asm_arg = Operand::from_val(arg.to_owned());
+                    if asm_arg.is_immediate() || asm_arg.is_reg() {
+                        instructions.push(Instruction::Push(asm_arg));
+                    } else {
+                        let reg = Operand::Reg(Register::AX);
+                        instructions.push(Instruction::Mov(reg.clone(), asm_arg));
+                        instructions.push(Instruction::Push(reg));
+                    }
+                }
+
+                // Adjust SP
+                instructions.push(Instruction::Call(Identifier::codegen(name)));
+                let stack_bytes = 8 * stack_args.len() as i64 + stack_padding;
+                if stack_bytes != 0 {
+                    instructions.push(Instruction::DeallocateStack(stack_bytes as i64));
+                }
+
+                // Get return value
+                let asm_dst = Operand::from_val(dst);
+                let return_reg = Operand::Reg(Register::AX);
+                instructions.push(Instruction::Mov(asm_dst, return_reg));
+            }
             _ => panic!("Unexpected IR instruction in codegen"),
         }
 
@@ -244,9 +377,14 @@ impl Instruction {
                 let op2 = op2.replace_pseudo(stack_pos, stack_addrs);
                 Instruction::Cmp(op1, op2)
             }
+            Instruction::Push(operand) => {
+                Instruction::Push(operand.replace_pseudo(stack_pos, stack_addrs))
+            }
             Instruction::Ret
             | Instruction::Cdq
             | Instruction::AllocateStack(_)
+            | Instruction::DeallocateStack(_)
+            | Instruction::Call(_)
             | Instruction::Label(_)
             | Instruction::JmpCC(_, _)
             | Instruction::Jmp(_) => self,
@@ -288,13 +426,13 @@ impl Instruction {
         }
     }
 
-    pub fn emit(&self) -> String {
+    pub fn emit(&self) -> CodegenResult<String> {
         #[inline(always)]
         fn format_instr(instr: String) -> String {
             format!("\t{}\n", instr)
         }
 
-        match self {
+        Ok(match self {
             Self::Ret => {
                 let mut result = String::new();
                 result.push_str(&format!("\n\tmov rsp, rbp\n"));
@@ -303,34 +441,41 @@ impl Instruction {
                 result
             }
             Self::Mov(dst, src) => {
-                format_instr(format!("mov {}, {}", dst.emit_4b(), src.emit_4b()))
+                format_instr(format!("mov {}, {}", dst.emit_4b()?, src.emit_4b()?))
             }
             Self::Unary(operator, operand) => {
-                format_instr(format!("{} {}", operator.emit(), operand.emit_4b()))
+                format_instr(format!("{} {}", operator.emit(), operand.emit_4b()?))
             }
             Self::Binary(operator, op1, op2) => format_instr(format!(
                 "{} {}, {}",
                 operator.emit(),
-                op1.emit_4b(),
-                op2.emit_4b()
+                op1.emit_4b()?,
+                op2.emit_4b()?
             )),
-            Self::Idiv(operand) => format_instr(format!("idiv {}", operand.emit_4b())),
+            Self::Idiv(operand) => format_instr(format!("idiv {}", operand.emit_4b()?)),
             Self::Cdq => format_instr(format!("cdq")),
             Self::AllocateStack(val) => format_instr(format!("sub rsp, {}\n", val)),
-            Self::Cmp(a, b) => format_instr(format!("cmp {}, {}", a.emit_4b(), b.emit_4b())),
+            Self::DeallocateStack(val) => format_instr(format!("add rsp, {}\n", val)),
+            Self::Cmp(a, b) => format_instr(format!("cmp {}, {}", a.emit_4b()?, b.emit_4b()?)),
             Self::Jmp(label) => format_instr(format!("jmp .L{}\n\n", label)),
             Self::JmpCC(cc, label) => format_instr(format!("j{} .L{}\n", cc.emit(), label)),
             Self::SetCC(cc, operand) => {
-                format_instr(format!("set{} {}", cc.emit(), operand.emit_1b()))
+                format_instr(format!("set{} {}", cc.emit(), operand.emit_1b()?))
             }
             Self::Label(label) => format!(".L{}:\n", label),
-        }
+            Self::Push(operand) => format_instr(format!("push {}", operand.emit_8b()?)),
+            // TODO: use the symbol table to insert @PLT eventually
+            Self::Call(identifier) => format_instr(format!("call {}", identifier)),
+        })
     }
 }
 
 impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.emit())
+        match self.emit() {
+            Ok(instr) => write!(f, "{}", instr),
+            Err(err) => write!(f, "{}", err),
+        }
     }
 }
 
@@ -443,19 +588,40 @@ impl Operand {
         }
     }
 
-    pub fn emit_4b(&self) -> String {
+    pub fn emit_8b(&self) -> CodegenResult<String> {
         match self {
-            Self::Reg(reg) => reg.emit_4b(),
-            Self::Immediate(val) => format!("{}", val),
-            Self::Stack(val) => format!("dword ptr [rbp{}]", val),
-            Self::Pseudo(_) => panic!("Fatal error: Pseudo-operand in emit stage"),
+            Self::Reg(reg) => Ok(reg.emit_8b()),
+            Self::Immediate(val) => Ok(format!("{}", val)),
+            Self::Stack(val) => Ok(format!(
+                "qword ptr [rbp{}{}]",
+                if *val > 0 { "+" } else { "-" },
+                val.abs()
+            )),
+            Self::Pseudo(id) => Err(CodegenError::PseudoOperandInEmit(id.to_string())),
         }
     }
 
-    pub fn emit_1b(&self) -> String {
+    pub fn emit_4b(&self) -> CodegenResult<String> {
         match self {
-            Self::Reg(reg) => reg.emit_1b(),
-            Self::Stack(val) => format!("byte ptr [rbp{}]", val),
+            Self::Reg(reg) => Ok(reg.emit_4b()),
+            Self::Immediate(val) => Ok(format!("{}", val)),
+            Self::Stack(val) => Ok(format!(
+                "dword ptr [rbp{}{}]",
+                if *val > 0 { "+" } else { "-" },
+                val.abs()
+            )),
+            Self::Pseudo(id) => Err(CodegenError::PseudoOperandInEmit(id.to_string())),
+        }
+    }
+
+    pub fn emit_1b(&self) -> CodegenResult<String> {
+        match self {
+            Self::Reg(reg) => Ok(reg.emit_1b()),
+            Self::Stack(val) => Ok(format!(
+                "byte ptr [rbp{}{}]",
+                if *val > 0 { "+" } else { "-" },
+                val.abs()
+            )),
             _ => self.emit_4b(),
         }
     }
@@ -465,16 +631,43 @@ impl Operand {
 #[allow(dead_code)]
 pub enum Register {
     AX,
+    BX,
+    CX,
     DX,
+    SI,
+    DI,
+    R8,
+    R9,
     R10,
     R11,
 }
 
 impl Register {
+    pub fn emit_8b(&self) -> String {
+        match self {
+            Self::AX => format!("rax"),
+            Self::BX => format!("rbx"),
+            Self::CX => format!("rcx"),
+            Self::DX => format!("rdx"),
+            Self::SI => format!("rsi"),
+            Self::DI => format!("rdi"),
+            Self::R8 => format!("r8d"),
+            Self::R9 => format!("r9d"),
+            Self::R10 => format!("r10d"),
+            Self::R11 => format!("r11d"),
+        }
+    }
+
     pub fn emit_4b(&self) -> String {
         match self {
             Self::AX => format!("eax"),
+            Self::BX => format!("ebx"),
+            Self::CX => format!("ecx"),
             Self::DX => format!("edx"),
+            Self::SI => format!("esi"),
+            Self::DI => format!("edi"),
+            Self::R8 => format!("r8d"),
+            Self::R9 => format!("r9d"),
             Self::R10 => format!("r10d"),
             Self::R11 => format!("r11d"),
         }
@@ -483,7 +676,13 @@ impl Register {
     pub fn emit_1b(&self) -> String {
         match self {
             Self::AX => format!("al"),
+            Self::BX => format!("bl"),
+            Self::CX => format!("cl"),
             Self::DX => format!("dl"),
+            Self::SI => format!("sil"),
+            Self::DI => format!("dil"),
+            Self::R8 => format!("r8b"),
+            Self::R9 => format!("r9b"),
             Self::R10 => format!("r10b"),
             Self::R11 => format!("r11b"),
         }
@@ -557,23 +756,23 @@ mod tests {
         #[test]
         fn program() {
             let actual = Program {
-                body: Function {
+                body: vec![Function {
                     name: Identifier::new("main"),
-                    instructions: vec![Instruction::AllocateStack(4), Instruction::Ret],
+                    instructions: vec![Instruction::AllocateStack(16), Instruction::Ret],
                     stack_pos: -4,
-                },
+                }],
             }
             .emit();
 
             let mut expected = String::new();
             expected.push_str(".intel_syntax noprefix\n\n");
             expected.push_str("main:\n\tpush rbp\n\tmov rbp, rsp\n");
-            expected.push_str(&Instruction::AllocateStack(4).emit());
-            expected.push_str(&Instruction::Ret.emit());
-            expected.push_str("\n\n.section .note.GNU-stack,\"\",@progbits\n");
+            expected.push_str(&Instruction::AllocateStack(16).emit().unwrap());
+            expected.push_str(&Instruction::Ret.emit().unwrap());
+            expected.push_str("\n\n\n\n.section .note.GNU-stack,\"\",@progbits\n");
             expected.push_str(&format!(".globl {}\n", "main"));
 
-            assert_eq!(expected, actual);
+            assert_eq!(expected, actual.unwrap());
         }
 
         #[test]
@@ -587,15 +786,15 @@ mod tests {
 
             let mut expected = String::new();
             expected.push_str("main:\n\tpush rbp\n\tmov rbp, rsp\n");
-            expected.push_str(&Instruction::AllocateStack(4).emit());
-            expected.push_str(&Instruction::Ret.emit());
+            expected.push_str(&Instruction::AllocateStack(4).emit().unwrap());
+            expected.push_str(&Instruction::Ret.emit().unwrap());
 
-            assert_eq!(expected, actual);
+            assert_eq!(expected, actual.unwrap());
         }
 
         #[test]
         fn instruction_allocate_stack() {
-            let actual = Instruction::AllocateStack(4).emit();
+            let actual = Instruction::AllocateStack(4).emit().unwrap();
             let expected = "\tsub rsp, 4\n\n";
             assert_eq!(expected, actual);
         }
@@ -604,21 +803,21 @@ mod tests {
         fn instruction_unary() {
             let actual = Instruction::Unary(UnaryOperator::Neg, Operand::Immediate(5)).emit();
             let expected = "\tneg 5\n";
-            assert_eq!(expected, actual);
+            assert_eq!(expected, actual.unwrap());
         }
 
         #[test]
         fn instruction_ret() {
             let actual = Instruction::Ret.emit();
             let expected = "\n\tmov rsp, rbp\n\tpop rbp\n\tret\n";
-            assert_eq!(expected, actual);
+            assert_eq!(expected, actual.unwrap());
         }
 
         #[test]
         fn instruction_mov() {
             let actual = Instruction::Mov(Operand::Stack(-4), Operand::Immediate(5)).emit();
             let expected = "\tmov dword ptr [rbp-4], 5\n";
-            assert_eq!(expected, actual);
+            assert_eq!(expected, actual.unwrap());
         }
 
         #[test]
@@ -633,19 +832,19 @@ mod tests {
         #[test]
         fn operand() {
             let op = Operand::Reg(Register::AX);
-            assert_eq!("eax", op.emit_4b());
+            assert_eq!("eax", op.emit_4b().unwrap());
 
             let op = Operand::Immediate(5);
-            assert_eq!("5", op.emit_4b());
+            assert_eq!("5", op.emit_4b().unwrap());
 
             let op = Operand::Stack(-4);
-            assert_eq!("dword ptr [rbp-4]", op.emit_4b());
+            assert_eq!("dword ptr [rbp-4]", op.emit_4b().unwrap());
         }
 
         #[test]
         #[should_panic]
-        fn operand_panics() {
-            Operand::Pseudo(Identifier::new("x")).emit_4b();
+        fn operand_errors() {
+            Operand::Pseudo(Identifier::new("x")).emit_4b().unwrap();
         }
 
         #[test]
@@ -661,8 +860,9 @@ mod tests {
     #[test]
     fn program() {
         let ir_program = ir::Program {
-            body: ir::Function {
+            body: vec![ir::Function {
                 name: ir::Identifier::new("main"),
+                params: vec![],
                 return_type: "Int".to_owned(),
                 instructions: vec![
                     ir::Instruction::Unary(
@@ -672,11 +872,11 @@ mod tests {
                     ),
                     ir::Instruction::Return(ir::Val::Var(ir::Identifier::new("x"))),
                 ],
-            },
+            }],
         };
 
         let expected = Program {
-            body: Function::codegen(ir_program.body.clone()),
+            body: vec![Function::codegen(ir_program.body[0].clone())],
         };
         let actual = Program::codegen(ir_program);
 
@@ -687,6 +887,7 @@ mod tests {
     fn function() {
         let ir_function = ir::Function {
             name: ir::Identifier::new("main"),
+            params: vec![],
             return_type: "Int".to_owned(),
             instructions: vec![
                 ir::Instruction::Unary(
@@ -702,13 +903,13 @@ mod tests {
         let expected = Function {
             name: Identifier::new("main"),
             instructions: vec![
-                Instruction::AllocateStack(4),
-                Instruction::Mov(Operand::Stack(-4), Operand::Immediate(5)),
-                Instruction::Unary(UnaryOperator::Neg, Operand::Stack(-4)),
-                Instruction::Mov(Operand::Reg(Register::AX), Operand::Stack(-4)),
+                Instruction::AllocateStack(16),
+                Instruction::Mov(Operand::Stack(-12), Operand::Immediate(5)),
+                Instruction::Unary(UnaryOperator::Neg, Operand::Stack(-12)),
+                Instruction::Mov(Operand::Reg(Register::AX), Operand::Stack(-12)),
                 Instruction::Ret,
             ],
-            stack_pos: -4,
+            stack_pos: -16,
         };
 
         assert_eq!(actual, expected);

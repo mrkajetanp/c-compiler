@@ -65,7 +65,7 @@ impl fmt::Display for Program {
 #[allow(dead_code)]
 pub struct Function {
     pub name: Identifier,
-    params: Vec<Identifier>,
+    pub params: Vec<Identifier>,
     pub return_type: String,
     pub instructions: Vec<Instruction>,
 }

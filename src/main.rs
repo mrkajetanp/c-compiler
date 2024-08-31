@@ -9,6 +9,10 @@ use rcc::*;
 struct Cli {
     path: String,
 
+    // Compile & assemble but do not link
+    #[arg(short)]
+    c: bool,
+
     #[arg(short, long)]
     lex: bool,
 
@@ -27,7 +31,7 @@ struct Cli {
     #[arg(long)]
     llvm: bool,
 
-    #[arg(short, long)]
+    #[arg(long)]
     codegen: bool,
 
     #[arg(short, long)]
@@ -72,7 +76,7 @@ fn main() -> ExitCode {
     let driver = Driver::new(&cli.path);
     log::info!("Building {}", cli.path);
 
-    match driver.compile(stage, cli.llvm) {
+    match driver.compile(stage, !cli.c, cli.llvm) {
         Ok(_) => ExitCode::SUCCESS,
         Err(err) => {
             log::error!("{}", err);
