@@ -67,8 +67,8 @@ Grammar
 IR Definition
 ==========================
 
-program = Program(function_definition)
-function_definition = Function(identifier, instruction* body)
+program = Program(function_definition*)
+function_definition = Function(identifier name, identifier* params, instruction* body)
 instruction = Return(val)
             | Unary(unary_operator, val src, val dst)
             | Binary(binary_operator, val src1, val src2, val dst)
@@ -77,6 +77,7 @@ instruction = Return(val)
 			| JumpIfZero(val condition, identifier target)
 			| JumpIfNotZero(val condition, identifier target)
 			| Label(identifier)
+			| FnCall(identifier fn_name, val* args, val dst)
 val = Constant(int) | Var(identifier)
 unary_operator = Complement | Negation
 binary_operator = Add | Subtract | Multiply | Divide | Remainder | And | Or

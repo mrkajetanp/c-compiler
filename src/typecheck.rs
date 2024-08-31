@@ -238,6 +238,7 @@ impl Expression {
         Ok(match self {
             Self::Constant(_) => self,
             Self::Var(ident) => {
+                // If this panics, there's a bug somewhere in identifier resolution
                 let entry = ctx.symbols.get(&ident).unwrap();
                 if !entry.ty.is_int() {
                     return Err(TypeCheckError::FunctionUsedAsVariable);
@@ -260,6 +261,7 @@ impl Expression {
                 Box::new(else_exp.typecheck(ctx)?),
             ),
             Self::FunctionCall(name, args) => {
+                // If this panics, there's a bug somewhere in identifier resolution
                 let ty = ctx.symbols.get(&name).unwrap().ty;
                 if ty.is_int() {
                     return Err(TypeCheckError::VariableUsedAsFunction);

@@ -35,21 +35,29 @@ impl IrCtx {
 #[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 pub struct Program {
-    pub body: Function,
+    pub body: Vec<Function>,
 }
 
 impl Program {
     pub fn generate(program: ast::Program, ctx: &mut IrCtx) -> Self {
         Program {
-            body: Function::generate(program.body, ctx),
+            body: program
+                .body
+                .into_iter()
+                // Flat map to drop function declarations without a body which will be None
+                .flat_map(|f| Function::generate(f, ctx))
+                .collect(),
         }
     }
 }
 
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Program:\n").unwrap();
-        write!(f, "{}", self.body)
+        write!(f, "Program:\n\n").unwrap();
+        for func in &self.body {
+            write!(f, "{}", func)?;
+        }
+        Ok(())
     }
 }
 
@@ -57,31 +65,46 @@ impl fmt::Display for Program {
 #[allow(dead_code)]
 pub struct Function {
     pub name: Identifier,
+    params: Vec<Identifier>,
     pub return_type: String,
     pub instructions: Vec<Instruction>,
 }
 
 impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} -> {}:\n", self.name, self.return_type).unwrap();
+        let params = self
+            .params
+            .iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<String>>()
+            .join(", ");
+        write!(f, "{}({}) -> {}:\n", self.name, params, self.return_type).unwrap();
         for instr in &self.instructions {
             write!(f, "{}\n", instr).unwrap();
         }
+        writeln!(f, "\n")?;
         Ok(())
     }
 }
 
 impl Function {
-    pub fn generate(function: ast::Function, ctx: &mut IrCtx) -> Self {
-        Function {
-            name: Identifier::generate(function.name),
-            return_type: function.return_type,
-            instructions: Instruction::generate_from_block(function.body, ctx)
-                .into_iter()
-                // Implicit return 0 at the end of each function
-                .chain([Instruction::Return(Val::Constant(0))])
-                .collect(),
-        }
+    pub fn generate(function: ast::FunctionDeclaration, ctx: &mut IrCtx) -> Option<Self> {
+        function.body.map(|b| {
+            Function {
+                name: Identifier::generate(function.name),
+                params: function
+                    .params
+                    .into_iter()
+                    .map(|i| Identifier::generate(i))
+                    .collect(),
+                return_type: function.return_type,
+                instructions: Instruction::generate_from_block(b, ctx)
+                    .into_iter()
+                    // Implicit return 0 at the end of each function
+                    .chain([Instruction::Return(Val::Constant(0))])
+                    .collect(),
+            }
+        })
     }
 }
 
@@ -96,6 +119,7 @@ pub enum Instruction {
     JumpIfZero(Val, Identifier),
     JumpIfNotZero(Val, Identifier),
     Label(Identifier),
+    FnCall(Identifier, Vec<Val>, Val),
 }
 
 impl Instruction {
@@ -103,14 +127,36 @@ impl Instruction {
         block
             .body
             .into_iter()
-            .flat_map(|block| Instruction::generate_from_basic_block(block, ctx))
+            .flat_map(|block| Instruction::generate_from_block_item(block, ctx))
             .collect()
     }
 
-    pub fn generate_from_basic_block(basic_block: ast::BlockItem, ctx: &mut IrCtx) -> Vec<Self> {
-        match basic_block {
+    pub fn generate_from_block_item(block_item: ast::BlockItem, ctx: &mut IrCtx) -> Vec<Self> {
+        match block_item {
             ast::BlockItem::Stmt(statement) => Self::generate_from_statement(statement, ctx),
             ast::BlockItem::Decl(declaration) => Self::generate_from_declaration(declaration, ctx),
+        }
+    }
+
+    pub fn generate_from_declaration(declaration: ast::Declaration, ctx: &mut IrCtx) -> Vec<Self> {
+        match declaration {
+            // Nested function definitions are illegal, this declaration cannot have a body
+            // Thus, no IR instructions need to be emitted here
+            ast::Declaration::FunDecl(_) => vec![],
+            ast::Declaration::VarDecl(decl) => Self::generate_from_variable_declaration(decl, ctx),
+        }
+    }
+
+    pub fn generate_from_variable_declaration(
+        declaration: ast::VariableDeclaration,
+        ctx: &mut IrCtx,
+    ) -> Vec<Self> {
+        if let Some(expr) = declaration.init {
+            let left = ast::Expression::Var(declaration.name);
+            let assignment = ast::Expression::Assignment(Box::new(left), Box::new(expr));
+            Self::generate_from_expr(assignment, ctx).0
+        } else {
+            vec![]
         }
     }
 
@@ -221,19 +267,9 @@ impl Instruction {
         (instructions, result)
     }
 
-    pub fn generate_from_declaration(declaration: ast::Declaration, ctx: &mut IrCtx) -> Vec<Self> {
-        if let Some(expr) = declaration.init {
-            let left = ast::Expression::Var(declaration.name);
-            let assignment = ast::Expression::Assignment(Box::new(left), Box::new(expr));
-            Self::generate_from_expr(assignment, ctx).0
-        } else {
-            vec![]
-        }
-    }
-
     pub fn generate_from_for_init(init: ast::ForInit, ctx: &mut IrCtx) -> Vec<Self> {
         match init {
-            ast::ForInit::InitDecl(decl) => Self::generate_from_declaration(decl, ctx),
+            ast::ForInit::InitDecl(decl) => Self::generate_from_variable_declaration(decl, ctx),
             ast::ForInit::InitExp(expr) => Self::generate_from_expr(expr, ctx).0,
             ast::ForInit::InitNull => vec![],
         }
@@ -253,6 +289,14 @@ impl fmt::Display for Instruction {
             Instruction::JumpIfZero(val, ident) => format!("\tjumpz {} {}\n", val, ident),
             Instruction::JumpIfNotZero(val, ident) => format!("\tjumpnz {} {}\n", val, ident),
             Instruction::Label(ident) => format!(":{}", ident),
+            Instruction::FnCall(name, params, dst) => {
+                let params = params
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                format!("\t{} = call {}({})", dst, name, params)
+            }
         };
         write!(f, "{}", result)
     }
@@ -342,6 +386,19 @@ impl Val {
                 instructions.push(Instruction::Copy(else_val, result.clone()));
                 instructions.push(Instruction::Label(end_label.clone()));
                 result
+            }
+            ast::Expression::FunctionCall(name, args) => {
+                let args = args
+                    .into_iter()
+                    .map(|a| Val::generate(a, instructions, ctx))
+                    .collect();
+                let retval = Self::Var(ctx.temp_var());
+                instructions.push(Instruction::FnCall(
+                    Identifier::generate(name),
+                    args,
+                    retval.clone(),
+                ));
+                retval
             } // _ => todo!(),
         }
     }
@@ -497,22 +554,23 @@ mod tests {
         let mut ctx = IrCtx::new();
 
         let ast_program = ast::Program {
-            body: ast::Function {
+            body: vec![ast::FunctionDeclaration {
                 name: ast::Identifier::new("main"),
+                params: vec![],
                 return_type: "Int".to_owned(),
-                body: ast::Block {
+                body: Some(ast::Block {
                     body: vec![ast::BlockItem::Stmt(ast::Statement::Return(
                         ast::Expression::Unary(
                             ast::UnaryOperator::Negation,
                             Box::new(ast::Expression::Constant(5)),
                         ),
                     ))],
-                },
-            },
+                }),
+            }],
         };
 
         let expected = Program {
-            body: Function::generate(ast_program.body.clone(), &mut ctx),
+            body: vec![Function::generate(ast_program.body[0].clone(), &mut ctx).unwrap()],
         };
         let mut ctx = IrCtx::new();
         let actual = Program::generate(ast_program, &mut ctx);
@@ -528,16 +586,18 @@ mod tests {
             Box::new(ast::Expression::Constant(5)),
         ));
 
-        let ast_fn = ast::Function {
+        let ast_fn = ast::FunctionDeclaration {
             name: ast::Identifier::new("main"),
+            params: vec![],
             return_type: "Int".to_owned(),
-            body: ast::Block {
+            body: Some(ast::Block {
                 body: vec![ast::BlockItem::Stmt(stmt.clone())],
-            },
+            }),
         };
 
         let expected = Function {
             name: Identifier::new("main"),
+            params: vec![],
             return_type: "Int".to_owned(),
             instructions: vec![
                 Instruction::generate_from_statement(stmt, &mut ctx),
@@ -551,7 +611,7 @@ mod tests {
         let mut ctx = IrCtx::new();
         let actual = Function::generate(ast_fn, &mut ctx);
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual, Some(expected));
     }
 
     #[test]
