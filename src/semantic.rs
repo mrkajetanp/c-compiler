@@ -108,23 +108,14 @@ fn clone_identifier_map(map: &IdentifierMap) -> IdentifierMap {
 impl ast::Program {
     pub fn validate(self) -> SemanticResult<Self> {
         let mut ctx = SemanticCtx::new();
-        let ast = match self.resolve(&mut ctx) {
-            Ok(ast) => Ok(ast),
-            Err(err) => {
+        self.resolve(&mut ctx)
+            .inspect_err(|err| {
                 log::error!("Variable resolution error: {}", err);
-                Err(err)
-            }
-        };
-
-        let ast = match ast?.label(&mut ctx) {
-            Ok(ast) => Ok(ast),
-            Err(err) => {
+            })?
+            .label(&mut ctx)
+            .inspect_err(|err| {
                 log::error!("Loop labelling error: {}", err);
-                Err(err)
-            }
-        };
-
-        ast
+            })
     }
 
     pub fn resolve(self, ctx: &mut SemanticCtx) -> SemanticResult<Self> {
