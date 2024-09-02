@@ -32,11 +32,15 @@ pub enum ErrorKind {
     SemanticError,
     #[error("Type Checking Failed")]
     TypeCheckError,
+    #[error("Codegen Failed")]
+    CodegenError,
     #[error("Asm Emission Failed")]
     AsmEmitError,
     #[error("IO Error")]
     IOError,
 }
+
+type CompileResult<T> = Result<T, ErrorKind>;
 
 #[derive(PartialEq, EnumIs, Clone, Copy)]
 pub enum CompileStage {
@@ -98,10 +102,10 @@ impl Driver {
                 if _llvm {
                     asm_path = self.llvm_asm_path(ast, stage);
                 } else {
-                    asm_path = self.asm_path(ast, stage);
+                    asm_path = self.asm_path(ast, stage)?;
                 }
             } else {
-                asm_path = self.asm_path(ast, stage)
+                asm_path = self.asm_path(ast, stage)?;
             }
         }
 
@@ -113,22 +117,26 @@ impl Driver {
         Ok(())
     }
 
-    pub fn asm_path(&self, ast: ast::Program, stage: CompileStage) -> Option<String> {
+    pub fn asm_path(
+        &self,
+        ast: ast::Program,
+        stage: CompileStage,
+    ) -> CompileResult<Option<String>> {
         let ir = self.generate_ir(ast);
         log::debug!("Generated IR:\n{}\n", &ir);
 
         if stage.is_ir() {
-            return None;
+            return Ok(None);
         }
 
-        let code = self.codegen(ir);
+        let code = self.codegen(ir)?;
         log::trace!("Codegen:\n{}\n", &code);
 
         if stage.is_codegen() {
-            return None;
+            return Ok(None);
         }
 
-        Some(self.emit(code).unwrap())
+        Ok(Some(self.emit(code).unwrap()))
     }
 
     pub fn preprocess(&self) -> String {
@@ -155,8 +163,8 @@ impl Driver {
         ir::Program::generate(ast, &mut ir_ctx)
     }
 
-    fn codegen(&self, ir: ir::Program) -> codegen::Program {
-        codegen::Program::codegen(ir)
+    fn codegen(&self, ir: ir::Program) -> CompileResult<codegen::Program> {
+        codegen::Program::codegen(ir).map_err(|_| ErrorKind::CodegenError)
     }
 
     fn emit(&self, code: codegen::Program) -> Result<String, ErrorKind> {

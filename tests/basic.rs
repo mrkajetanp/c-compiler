@@ -29,7 +29,7 @@ fn test_basic_lex() {
     ];
 
     let tokens = driver.lex(source);
-    assert_eq!(tokens, tokens_expected);
+    assert_eq!(tokens.unwrap(), tokens_expected);
 }
 
 #[test]
@@ -86,7 +86,7 @@ fn test_unary_lex() {
     ];
 
     let tokens = driver.lex(source);
-    assert_eq!(tokens, tokens_expected);
+    assert_eq!(tokens.unwrap(), tokens_expected);
 }
 
 #[test]
