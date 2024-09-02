@@ -3,6 +3,7 @@ use core::panic;
 use regex::Regex;
 use strum::IntoEnumIterator;
 use strum_macros::{EnumIs, EnumIter};
+use thiserror::Error;
 
 static IDENTIFIER_RE: &str = r"[[:alpha:]_]\w*\b";
 static CONSTANT_RE: &str = r"[[:digit:]]+\b";
@@ -41,6 +42,14 @@ static ELSE_RE: &str = r"else\b";
 static QUESTION_RE: &str = r"\?";
 static COLON_RE: &str = r":";
 static COMMA_RE: &str = r"\,";
+
+#[derive(Error, Debug)]
+pub enum LexerError {
+    #[error("Syntax error")]
+    SyntaxError,
+}
+
+pub type LexerResult<T> = Result<T, LexerError>;
 
 // NOTE: The tokenizer will try tokens in-order based on this list
 // It *must* be ordered longest-match first
@@ -249,7 +258,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn tokenize(&mut self) -> Vec<TokenKind> {
+    pub fn tokenize(&mut self) -> LexerResult<Vec<TokenKind>> {
         let mut tokens = vec![];
 
         let patterns: Vec<Regex> = TokenKind::iter().map(|t| t.to_regex()).collect();
@@ -269,7 +278,7 @@ impl<'a> Lexer<'a> {
 
             if !token_found {
                 log::debug!("Parsed tokens: {:?}", tokens);
-                log::error!("Syntax Error: Could not parse token");
+                log::error!("Could not parse token");
                 let error_source: String = self
                     .source
                     .to_owned()
@@ -278,14 +287,14 @@ impl<'a> Lexer<'a> {
                     .collect::<Vec<&str>>()
                     .join("\n");
                 log::error!("At source: \n{}", error_source);
-                panic!("Syntax Error");
+                return Err(LexerError::SyntaxError);
             }
         }
-        tokens
+        Ok(tokens)
     }
 }
 
-pub fn run_lexer(source: String) -> Vec<TokenKind> {
+pub fn run_lexer(source: String) -> LexerResult<Vec<TokenKind>> {
     let mut lexer = Lexer::new(&source.trim());
     lexer.tokenize()
 }

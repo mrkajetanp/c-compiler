@@ -24,6 +24,10 @@ use lexer::TokenKind;
 
 #[derive(Error, Debug)]
 pub enum ErrorKind {
+    #[error("Lexer Failed")]
+    LexerError,
+    #[error("AST Parsing Failed")]
+    ParserError,
     #[error("Semantic Analysis Failed")]
     SemanticError,
     #[error("Type Checking Failed")]
@@ -65,7 +69,7 @@ impl Driver {
         log::debug!("Preprocessed source:");
         log::debug!("\n{}", source);
 
-        let tokens = self.lex(source);
+        let tokens = self.lex(source).map_err(|_| ErrorKind::LexerError)?;
         log::debug!("Tokens:\n{:?}\n", &tokens);
 
         if stage.is_lex() {
@@ -138,7 +142,7 @@ impl Driver {
         output_path
     }
 
-    pub fn lex(&self, source: String) -> Vec<TokenKind> {
+    pub fn lex(&self, source: String) -> lexer::LexerResult<Vec<TokenKind>> {
         lexer::run_lexer(source)
     }
 
