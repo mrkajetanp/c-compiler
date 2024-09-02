@@ -76,7 +76,7 @@ impl Driver {
             return Ok(());
         }
 
-        let ast = self.parse(tokens);
+        let ast = self.parse(tokens).map_err(|_| ErrorKind::ParserError)?;
         log::debug!("Parsed AST:\n{}\n", format_tree!(ast));
 
         if stage.is_parse() {
@@ -146,7 +146,7 @@ impl Driver {
         lexer::run_lexer(source)
     }
 
-    pub fn parse(&self, tokens: Vec<TokenKind>) -> ast::Program {
+    pub fn parse(&self, tokens: Vec<TokenKind>) -> ast::ParserResult<ast::Program> {
         ast::Program::parse(tokens)
     }
 

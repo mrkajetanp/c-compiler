@@ -1,9 +1,26 @@
 use crate::lexer::*;
 use display_tree::{format_tree, DisplayTree, StyleBuilder};
 use std::collections::VecDeque;
+use std::fmt;
 use std::mem::discriminant;
-use std::{error::Error, fmt};
 use strum_macros::{Display, EnumIs};
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ParserError {
+    #[error("Unexpected token in the token stream")]
+    UnexpectedToken,
+    #[error("No tokens left in the token stream")]
+    NoTokens,
+    #[error("Malformed expression")]
+    MalformedExpression,
+    #[error("Could not parse identifier")]
+    IdentifierParsingError,
+    #[error("Trailing comma")]
+    TrailingComma,
+}
+
+pub type ParserResult<T> = Result<T, ParserError>;
 
 #[derive(Debug, PartialEq)]
 #[allow(dead_code)]
@@ -12,7 +29,7 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn parse(tokens: Vec<TokenKind>) -> Program {
+    pub fn parse(tokens: Vec<TokenKind>) -> ParserResult<Self> {
         let mut tokens = VecDeque::from(tokens);
         let mut body = vec![];
 
@@ -20,13 +37,13 @@ impl Program {
             match FunctionDeclaration::parse(&mut tokens) {
                 Ok(func) => body.push(func),
                 Err(err) => {
-                    log::error!("Error reason: {}", err);
-                    panic!("Could not parse AST");
+                    log::error!("Parser error: {}", err);
+                    return Err(err);
                 }
             }
         }
 
-        Program { body }
+        Ok(Program { body })
     }
 }
 
@@ -57,7 +74,7 @@ pub struct FunctionDeclaration {
 }
 
 impl FunctionDeclaration {
-    fn parse(tokens: &mut VecDeque<TokenKind>) -> Result<FunctionDeclaration, ParserError> {
+    fn parse(tokens: &mut VecDeque<TokenKind>) -> ParserResult<Self> {
         log_trace("parsing function from", tokens);
         let return_type = expect_token(TokenKind::Int, tokens)?;
 
@@ -149,7 +166,7 @@ pub struct Block {
 }
 
 impl Block {
-    fn parse(tokens: &mut VecDeque<TokenKind>) -> Result<Self, ParserError> {
+    fn parse(tokens: &mut VecDeque<TokenKind>) -> ParserResult<Self> {
         expect_token(TokenKind::BraceOpen, tokens)?;
 
         let mut body = vec![];
@@ -197,7 +214,7 @@ pub enum BlockItem {
 }
 
 impl BlockItem {
-    fn parse(tokens: &mut VecDeque<TokenKind>) -> Result<Self, ParserError> {
+    fn parse(tokens: &mut VecDeque<TokenKind>) -> ParserResult<Self> {
         log_trace("parsing block item from", tokens);
 
         let token = tokens.front().unwrap().to_owned();
@@ -226,7 +243,7 @@ pub enum Declaration {
 }
 
 impl Declaration {
-    fn parse(tokens: &mut VecDeque<TokenKind>) -> Result<Self, ParserError> {
+    fn parse(tokens: &mut VecDeque<TokenKind>) -> ParserResult<Self> {
         // If the 3rd token is a '(', we're looking at a function declaration
         if tokens.get(2).unwrap().is_paren_open() {
             Ok(Self::FunDecl(FunctionDeclaration::parse(tokens)?))
@@ -252,7 +269,7 @@ pub struct VariableDeclaration {
 }
 
 impl VariableDeclaration {
-    fn parse(tokens: &mut VecDeque<TokenKind>) -> Result<Self, ParserError> {
+    fn parse(tokens: &mut VecDeque<TokenKind>) -> ParserResult<Self> {
         log_trace("Parsing declaration from", tokens);
         // Silent expect here because we can use this failing to check
         // whether we're parsing a declaration or something else
@@ -510,7 +527,7 @@ impl fmt::Display for Statement {
 }
 
 impl Statement {
-    fn parse(tokens: &mut VecDeque<TokenKind>) -> Result<Statement, ParserError> {
+    fn parse(tokens: &mut VecDeque<TokenKind>) -> ParserResult<Self> {
         log_trace("Trying statement from", tokens);
 
         let token = tokens.front().unwrap().to_owned();
@@ -605,7 +622,7 @@ pub enum ForInit {
 }
 
 impl ForInit {
-    fn parse(tokens: &mut VecDeque<TokenKind>) -> Result<Self, ParserError> {
+    fn parse(tokens: &mut VecDeque<TokenKind>) -> ParserResult<Self> {
         let result = if let Ok(decl) = VariableDeclaration::parse(tokens) {
             Self::InitDecl(decl)
         } else if let Ok(exp) = Expression::parse(tokens, 0) {
@@ -650,10 +667,7 @@ pub enum Expression {
 }
 
 impl Expression {
-    fn parse(
-        tokens: &mut VecDeque<TokenKind>,
-        min_precedence: u32,
-    ) -> Result<Expression, ParserError> {
+    fn parse(tokens: &mut VecDeque<TokenKind>, min_precedence: u32) -> ParserResult<Self> {
         log_trace("Trying expr from", tokens);
 
         if tokens.len() == 0 {
@@ -688,7 +702,7 @@ impl Expression {
         Ok(left)
     }
 
-    fn parse_factor(tokens: &mut VecDeque<TokenKind>) -> Result<Expression, ParserError> {
+    fn parse_factor(tokens: &mut VecDeque<TokenKind>) -> ParserResult<Self> {
         log_trace("Trying factor from", tokens);
 
         if tokens.len() == 0 {
@@ -746,7 +760,7 @@ impl Expression {
         Err(ParserError::MalformedExpression)
     }
 
-    fn parse_optional(tokens: &mut VecDeque<TokenKind>) -> Result<Option<Expression>, ParserError> {
+    fn parse_optional(tokens: &mut VecDeque<TokenKind>) -> ParserResult<Option<Expression>> {
         let expr = Expression::parse(tokens, 0);
         if let Ok(expr) = expr {
             Ok(Some(expr))
@@ -789,7 +803,7 @@ pub enum BinaryOperator {
 }
 
 impl BinaryOperator {
-    fn parse(tokens: &mut VecDeque<TokenKind>) -> Result<Self, ParserError> {
+    fn parse(tokens: &mut VecDeque<TokenKind>) -> ParserResult<Self> {
         let token = tokens.pop_front().unwrap();
 
         match token {
@@ -851,7 +865,7 @@ pub enum UnaryOperator {
 }
 
 impl UnaryOperator {
-    fn parse(tokens: &mut VecDeque<TokenKind>) -> Result<Self, ParserError> {
+    fn parse(tokens: &mut VecDeque<TokenKind>) -> ParserResult<Self> {
         let token = tokens.pop_front().unwrap();
 
         match token {
@@ -871,7 +885,7 @@ pub struct Identifier {
 }
 
 impl Identifier {
-    pub fn parse(token: TokenKind) -> Result<Self, ParserError> {
+    pub fn parse(token: TokenKind) -> ParserResult<Self> {
         if let TokenKind::Identifier(name) = token {
             Ok(Self { name })
         } else {
@@ -909,28 +923,11 @@ fn log_trace(msg: &str, tokens: &mut VecDeque<TokenKind>) {
     );
 }
 
-#[derive(Debug)]
-pub enum ParserError {
-    UnexpectedToken,
-    NoTokens,
-    MalformedExpression,
-    IdentifierParsingError,
-    TrailingComma,
-}
-
-impl fmt::Display for ParserError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl Error for ParserError {}
-
 #[inline(always)]
 fn expect_token_silent(
     expected: TokenKind,
     tokens: &mut VecDeque<TokenKind>,
-) -> Result<TokenKind, ParserError> {
+) -> ParserResult<TokenKind> {
     let exp = discriminant(&expected);
     let actual = discriminant(&tokens[0]);
 
@@ -942,10 +939,7 @@ fn expect_token_silent(
 }
 
 #[inline(always)]
-fn expect_token(
-    expected: TokenKind,
-    tokens: &mut VecDeque<TokenKind>,
-) -> Result<TokenKind, ParserError> {
+fn expect_token(expected: TokenKind, tokens: &mut VecDeque<TokenKind>) -> ParserResult<TokenKind> {
     let result = expect_token_silent(expected.clone(), tokens);
     if let Err(_) = result {
         log::error!(
@@ -989,7 +983,7 @@ mod tests {
             body: vec![function_expected],
         };
 
-        assert_eq!(Program::parse(tokens), program_expected);
+        assert_eq!(Program::parse(tokens).unwrap(), program_expected);
     }
 
     #[test]
