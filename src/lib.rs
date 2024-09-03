@@ -81,6 +81,7 @@ impl Driver {
         }
 
         let ast = self.parse(tokens).map_err(|_| ErrorKind::ParserError)?;
+        log::trace!("Parsed AST:\n{}\n", ast);
         log::debug!("Parsed AST:\n{}\n", format_tree!(ast));
 
         if stage.is_parse() {

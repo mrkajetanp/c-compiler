@@ -6,6 +6,8 @@ use std::mem::discriminant;
 use strum_macros::{Display, EnumIs};
 use thiserror::Error;
 
+static INDENT: &str = "  ";
+
 #[derive(Debug, Error)]
 pub enum ParserError {
     #[error("Unexpected token in the token stream")]
@@ -44,6 +46,15 @@ impl Program {
         }
 
         Ok(Program { body })
+    }
+}
+
+impl fmt::Display for Program {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for function in &self.body {
+            function.tree_print(f, 0)?;
+        }
+        Ok(())
     }
 }
 
@@ -125,6 +136,22 @@ impl FunctionDeclaration {
     }
 }
 
+impl FunctionDeclaration {
+    pub fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
+        let indent = std::iter::repeat(INDENT)
+            .take(indent_level)
+            .collect::<String>();
+
+        writeln!(f, "{}FunctionDeclaration", indent)?;
+        writeln!(f, "{}{} ({:?})", indent, self.name, self.params)?;
+        writeln!(f, "{}{}", indent, self.return_type)?;
+        if let Some(body) = &self.body {
+            body.tree_print(f, indent_level + 1)?;
+        }
+        Ok(())
+    }
+}
+
 impl fmt::Display for FunctionDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let params = self
@@ -180,6 +207,19 @@ impl Block {
     }
 }
 
+impl Block {
+    pub fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
+        let indent = std::iter::repeat(INDENT)
+            .take(indent_level)
+            .collect::<String>();
+        writeln!(f, "{}Block", indent)?;
+        for block_item in &self.body {
+            block_item.tree_print(f, indent_level + 1)?;
+        }
+        Ok(())
+    }
+}
+
 impl DisplayTree for Block {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>, style: display_tree::Style) -> std::fmt::Result {
         for basic_block in &self.body {
@@ -227,6 +267,20 @@ impl BlockItem {
     }
 }
 
+impl BlockItem {
+    pub fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
+        let indent = std::iter::repeat(INDENT)
+            .take(indent_level)
+            .collect::<String>();
+        writeln!(f, "{}BlockItem", indent)?;
+        match self {
+            BlockItem::Stmt(stmt) => stmt.tree_print(f, indent_level + 1)?,
+            BlockItem::Decl(decl) => decl.tree_print(f, indent_level + 1)?,
+        };
+        Ok(())
+    }
+}
+
 impl fmt::Display for BlockItem {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -250,6 +304,21 @@ impl Declaration {
         } else {
             Ok(Self::VarDecl(VariableDeclaration::parse(tokens)?))
         }
+    }
+}
+
+impl Declaration {
+    pub fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
+        let indent = std::iter::repeat(INDENT)
+            .take(indent_level)
+            .collect::<String>();
+
+        writeln!(f, "{}Declaration", indent)?;
+        match self {
+            Declaration::FunDecl(decl) => decl.tree_print(f, indent_level + 1)?,
+            Declaration::VarDecl(decl) => decl.tree_print(f, indent_level + 1)?,
+        }
+        Ok(())
     }
 }
 
@@ -289,6 +358,22 @@ impl VariableDeclaration {
         let result = Self { name: ident, init };
         log::trace!("-- Parsed declaration: {}", result);
         Ok(result)
+    }
+}
+
+impl VariableDeclaration {
+    pub fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
+        let indent = std::iter::repeat(INDENT)
+            .take(indent_level)
+            .collect::<String>();
+
+        writeln!(f, "{}VariableDeclaration", indent)?;
+        writeln!(f, "{}int", indent)?;
+        writeln!(f, "{}{}", indent, self.name)?;
+        if let Some(init) = &self.init {
+            init.tree_print(f, indent_level + 1)?;
+        }
+        Ok(())
     }
 }
 
@@ -341,6 +426,19 @@ pub enum Statement {
         Option<Identifier>,
     ),
     Null,
+}
+
+impl Statement {
+    pub fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
+        let indent = std::iter::repeat(INDENT)
+            .take(indent_level)
+            .collect::<String>();
+
+        // TODO: proper formatting here
+        writeln!(f, "{}Statement", indent)?;
+        write!(f, "{}{}", indent, self)?;
+        Ok(())
+    }
 }
 
 impl DisplayTree for Statement {
@@ -767,6 +865,18 @@ impl Expression {
         } else {
             Ok(None)
         }
+    }
+}
+
+impl Expression {
+    pub fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
+        let indent = std::iter::repeat("  ")
+            .take(indent_level)
+            .collect::<String>();
+
+        // TODO: proper formatting here
+        writeln!(f, "{}{}", indent, self)?;
+        Ok(())
     }
 }
 
