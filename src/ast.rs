@@ -7,6 +7,10 @@ use strum_macros::{Display, EnumIs};
 use thiserror::Error;
 
 static INDENT: &str = "  ";
+static CON_VERT: &str = "│";
+static CON_LINE: &str = "─";
+static CON_MID: &str = "├─";
+static CON_END: &str = "└─";
 
 #[derive(Debug, Error)]
 pub enum ParserError {
@@ -367,9 +371,7 @@ impl VariableDeclaration {
             .take(indent_level)
             .collect::<String>();
 
-        writeln!(f, "{}VariableDeclaration", indent)?;
-        writeln!(f, "{}int", indent)?;
-        writeln!(f, "{}{}", indent, self.name)?;
+        writeln!(f, "{}VariableDeclaration(int, {})", indent, self.name)?;
         if let Some(init) = &self.init {
             init.tree_print(f, indent_level + 1)?;
         }
@@ -434,9 +436,65 @@ impl Statement {
             .take(indent_level)
             .collect::<String>();
 
-        // TODO: proper formatting here
-        writeln!(f, "{}Statement", indent)?;
-        write!(f, "{}{}", indent, self)?;
+        match self {
+            Statement::Return(val) => {
+                writeln!(f, "{}Return", indent)?;
+                val.tree_print(f, indent_level + 1)?;
+            }
+            Statement::While(cond, body, label) => {
+                writeln!(
+                    f,
+                    "{}While ({}) [{}]",
+                    indent,
+                    cond,
+                    option_ident_to_string(label)
+                )?;
+                body.tree_print(f, indent_level + 1)?;
+            }
+            Statement::DoWhile(body, cond, label) => {
+                writeln!(
+                    f,
+                    "{}Do-While ({}) [{}]",
+                    indent,
+                    cond,
+                    option_ident_to_string(label)
+                )?;
+                body.tree_print(f, indent_level + 1)?;
+            }
+            Statement::If(cond, then_stmt, else_stmt) => {
+                writeln!(f, "{}If ({})", indent, cond)?;
+                then_stmt.tree_print(f, indent_level + 2)?;
+                if let Some(else_stmt) = else_stmt {
+                    writeln!(f, "{}Else", indent)?;
+                    else_stmt.tree_print(f, indent_level + 2)?;
+                }
+            }
+            Statement::For(init, cond, post, body, label) => {
+                writeln!(f, "{}For [{}]", indent, option_ident_to_string(label))?;
+                writeln!(f, "{}{CON_MID}init: {}", indent, init)?;
+                if let Some(cond) = cond {
+                    writeln!(f, "{}{CON_MID}cond: {}", indent, cond)?;
+                }
+                if let Some(post) = post {
+                    writeln!(f, "{}{CON_MID}post: {}", indent, post)?;
+                }
+                writeln!(f, "{}{CON_END}body:", indent)?;
+                body.tree_print(f, indent_level + 1)?;
+            }
+            Statement::Compound(block) => {
+                writeln!(f, "{}Compound", indent)?;
+                block.tree_print(f, indent_level + 1)?
+            }
+            Statement::Exp(exp) => exp.tree_print(f, indent_level + 1)?,
+            Statement::Break(label) => {
+                writeln!(f, "{indent}Break [{}]", option_ident_to_string(label))?
+            }
+            Statement::Continue(label) => {
+                writeln!(f, "{indent}Continue [{}]", option_ident_to_string(label))?
+            }
+            Statement::Null => writeln!(f, "{indent}Null")?,
+        }
+
         Ok(())
     }
 }
@@ -615,9 +673,9 @@ impl fmt::Display for Statement {
                 )?;
                 write!(f, "\t{}", body)
             } // _ => write!(f, "{:?}", self),
-            Statement::Break(label) => writeln!(f, "break [{}]", option_ident_to_string(label)),
+            Statement::Break(label) => write!(f, "break [{}]", option_ident_to_string(label)),
             Statement::Continue(label) => {
-                writeln!(f, "continue [{}]", option_ident_to_string(label))
+                write!(f, "continue [{}]", option_ident_to_string(label))
             }
             Statement::Null => write!(f, "NULL"),
         }
@@ -870,12 +928,28 @@ impl Expression {
 
 impl Expression {
     pub fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
-        let indent = std::iter::repeat("  ")
+        let indent = std::iter::repeat(INDENT)
             .take(indent_level)
             .collect::<String>();
 
-        // TODO: proper formatting here
-        writeln!(f, "{}{}", indent, self)?;
+        match self {
+            Expression::Assignment(left, right) => {
+                writeln!(f, "{indent}Assignment")?;
+                writeln!(f, "{indent}{CON_MID}Left")?;
+                left.tree_print(f, indent_level + 2)?;
+                writeln!(f, "{indent}{CON_END}Right")?;
+                right.tree_print(f, indent_level + 2)?;
+            }
+            Expression::Binary(op, left, right) => {
+                writeln!(f, "{indent}Binary")?;
+                writeln!(f, "{indent}{CON_MID}operator: {}", op)?;
+                writeln!(f, "{indent}{CON_MID}Left")?;
+                left.tree_print(f, indent_level + 2)?;
+                writeln!(f, "{indent}{CON_END}Right")?;
+                right.tree_print(f, indent_level + 2)?;
+            }
+            _ => writeln!(f, "{}{}", indent, self)?,
+        }
         Ok(())
     }
 }
