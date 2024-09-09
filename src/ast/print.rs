@@ -110,30 +110,37 @@ impl Statement {
                 val.tree_print(f, indent_level + 1)?;
             }
             Statement::While(cond, body, label) => {
+                writeln!(f, "{indent}While")?;
                 writeln!(
                     f,
-                    "{}While ({}) [{}]",
-                    indent,
-                    cond,
+                    "{indent}{CON_MID}label: {}",
                     option_ident_to_string(label)
                 )?;
-                body.tree_print(f, indent_level + 1)?;
+                writeln!(f, "{indent}{CON_MID}cond:")?;
+                cond.tree_print(f, indent_level + 2)?;
+                writeln!(f, "{indent}{CON_MID}body:")?;
+                body.tree_print(f, indent_level + 2)?;
             }
             Statement::DoWhile(body, cond, label) => {
+                writeln!(f, "{indent}Do-While")?;
                 writeln!(
                     f,
-                    "{}Do-While ({}) [{}]",
-                    indent,
-                    cond,
+                    "{indent}{CON_MID}label: {}",
                     option_ident_to_string(label)
                 )?;
-                body.tree_print(f, indent_level + 1)?;
+                writeln!(f, "{indent}{CON_MID}cond:")?;
+                cond.tree_print(f, indent_level + 2)?;
+                writeln!(f, "{indent}{CON_MID}body:")?;
+                body.tree_print(f, indent_level + 2)?;
             }
             Statement::If(cond, then_stmt, else_stmt) => {
-                writeln!(f, "{}If ({})", indent, cond)?;
+                writeln!(f, "{indent}If")?;
+                writeln!(f, "{indent}{CON_MID}cond:")?;
+                cond.tree_print(f, indent_level + 2)?;
+                writeln!(f, "{indent}{CON_MID}then:")?;
                 then_stmt.tree_print(f, indent_level + 2)?;
                 if let Some(else_stmt) = else_stmt {
-                    writeln!(f, "{}Else", indent)?;
+                    writeln!(f, "{}else:", indent)?;
                     else_stmt.tree_print(f, indent_level + 2)?;
                 }
             }
@@ -177,6 +184,8 @@ impl Expression {
             .collect::<String>();
 
         match self {
+            Expression::Constant(val) => writeln!(f, "{indent}Constant: {}", val)?,
+            Expression::Var(name) => writeln!(f, "{indent}Var: {}", name)?,
             Expression::Unary(op, val) => {
                 writeln!(f, "{indent}Unary")?;
                 writeln!(f, "{indent}{CON_MID}operator: {}", op)?;
@@ -216,7 +225,6 @@ impl Expression {
                     arg.tree_print(f, indent_level + 2)?;
                 }
             }
-            _ => writeln!(f, "{}{}", indent, self)?,
         }
         Ok(())
     }

@@ -111,24 +111,8 @@ impl FunctionDeclaration {
             body,
         };
 
-        log::trace!("--- Parsed function declaration: {}", func);
+        log::trace!("--- Parsed function declaration: {:?}", func);
         Ok(func)
-    }
-}
-
-impl fmt::Display for FunctionDeclaration {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let params = self
-            .params
-            .iter()
-            .map(|p| p.to_string())
-            .collect::<Vec<String>>()
-            .join(",");
-        writeln!(f, "{} {}({})", self.return_type, self.name, params)?;
-        if let Some(body) = &self.body {
-            writeln!(f, "\t{}", body)?;
-        }
-        Ok(())
     }
 }
 
@@ -153,15 +137,6 @@ impl Block {
     }
 }
 
-impl fmt::Display for Block {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for basic_block in &self.body {
-            writeln!(f, "{}", basic_block)?;
-        }
-        Ok(())
-    }
-}
-
 #[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub enum BlockItem {
@@ -183,15 +158,6 @@ impl BlockItem {
     }
 }
 
-impl fmt::Display for BlockItem {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            BlockItem::Stmt(stmt) => write!(f, "{:?}", stmt),
-            BlockItem::Decl(decl) => write!(f, "{}", decl),
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Clone)]
 pub enum Declaration {
     FunDecl(FunctionDeclaration),
@@ -205,15 +171,6 @@ impl Declaration {
             Ok(Self::FunDecl(FunctionDeclaration::parse(tokens)?))
         } else {
             Ok(Self::VarDecl(VariableDeclaration::parse(tokens)?))
-        }
-    }
-}
-
-impl fmt::Display for Declaration {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Declaration::FunDecl(decl) => write!(f, "{:?}", decl),
-            Declaration::VarDecl(decl) => write!(f, "{}", decl),
         }
     }
 }
@@ -243,20 +200,8 @@ impl VariableDeclaration {
         expect_token(TokenKind::Semicolon, tokens)?;
 
         let result = Self { name: ident, init };
-        log::trace!("-- Parsed declaration: {}", result);
+        log::trace!("-- Parsed declaration: {:?}", result);
         Ok(result)
-    }
-}
-
-impl fmt::Display for VariableDeclaration {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "int {}", self.name)?;
-        if let Some(init) = &self.init {
-            write!(f, " = {}", init)?;
-        } else {
-            write!(f, ";")?;
-        }
-        Ok(())
     }
 }
 
@@ -391,16 +336,6 @@ impl ForInit {
     }
 }
 
-impl fmt::Display for ForInit {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::InitDecl(decl) => write!(f, "{}", decl),
-            Self::InitExp(expr) => write!(f, "{}", expr),
-            Self::InitNull => write!(f, " "),
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub enum Expression {
@@ -445,7 +380,7 @@ impl Expression {
             }
             token = tokens.front().unwrap().to_owned();
         }
-        log::trace!("-- Parsed expression: {}", left);
+        log::trace!("-- Parsed expression: {:?}", left);
         Ok(left)
     }
 
@@ -517,22 +452,7 @@ impl Expression {
     }
 }
 
-impl fmt::Display for Expression {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Expression::Binary(op, left, right) => write!(f, "{} {} {}", left, op, right),
-            Expression::Unary(op, expr) => write!(f, "{}{}", op, expr),
-            Expression::Assignment(left, right) => write!(f, "{} = {}", left, right),
-            Expression::Conditional(cond, a, b) => write!(f, "{} ? {} : {}", cond, a, b),
-            Expression::Var(ident) => write!(f, "Var({})", ident.name),
-            Expression::Constant(val) => write!(f, "Constant({})", val),
-            Expression::FunctionCall(name, args) => write!(f, "{}({:?})", name, args),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone, EnumIs)]
-#[allow(dead_code)]
+#[derive(Debug, PartialEq, Clone, EnumIs, Display)]
 pub enum BinaryOperator {
     Add,
     Subtract,
@@ -576,30 +496,6 @@ impl BinaryOperator {
             &BinaryOperator::And | &BinaryOperator::Or => true,
             _ => false,
         }
-    }
-}
-
-impl fmt::Display for BinaryOperator {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                BinaryOperator::Add => "+",
-                BinaryOperator::Subtract => "-",
-                BinaryOperator::Multiply => "*",
-                BinaryOperator::Divide => "/",
-                BinaryOperator::Remainder => "%",
-                BinaryOperator::And => "&&",
-                BinaryOperator::Or => "||",
-                BinaryOperator::Equal => "==",
-                BinaryOperator::NotEqual => "!=",
-                BinaryOperator::LessEqualThan => "<=",
-                BinaryOperator::GreaterEqualThan => ">=",
-                BinaryOperator::LessThan => "<",
-                BinaryOperator::GreaterThan => ">",
-            }
-        )
     }
 }
 
