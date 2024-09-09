@@ -1,6 +1,5 @@
 #![feature(let_chains)]
 
-use display_tree::format_tree;
 use lliw::Fg;
 use std::fs;
 use std::io::{Error, Write};
@@ -81,17 +80,16 @@ impl Driver {
         }
 
         let ast = self.parse(tokens).map_err(|_| ErrorKind::ParserError)?;
-        log::trace!("Parsed AST:\n{}\n", ast);
-        log::debug!("Parsed AST:\n{}\n", format_tree!(ast));
+        log::debug!("Parsed AST:\n{}\n", ast);
 
         if stage.is_parse() {
             return Ok(());
         }
 
         let ast = ast.validate().map_err(|_| ErrorKind::SemanticError)?;
-        log::trace!("Resolved and labelled AST:\n{}\n", format_tree!(ast));
+        log::trace!("Resolved and labelled AST:\n{}\n", ast);
         let ast = ast.typecheck().map_err(|_| ErrorKind::TypeCheckError)?;
-        log::debug!("Validated AST:\n{}\n", format_tree!(ast));
+        log::debug!("Validated AST:\n{}\n", ast);
 
         if stage.is_validate() {
             return Ok(());
