@@ -15,8 +15,12 @@ fn option_ident_to_string(ident: &Option<Identifier>) -> String {
     }
 }
 
-impl FunctionDeclaration {
-    pub fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
+pub trait TreePrint {
+    fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result;
+}
+
+impl TreePrint for FunctionDeclaration {
+    fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
         let indent = std::iter::repeat(INDENT)
             .take(indent_level)
             .collect::<String>();
@@ -39,8 +43,8 @@ impl FunctionDeclaration {
     }
 }
 
-impl Block {
-    pub fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
+impl TreePrint for Block {
+    fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
         let indent = std::iter::repeat(INDENT)
             .take(indent_level)
             .collect::<String>();
@@ -52,8 +56,8 @@ impl Block {
     }
 }
 
-impl BlockItem {
-    pub fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
+impl TreePrint for BlockItem {
+    fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
         let indent = std::iter::repeat(INDENT)
             .take(indent_level)
             .collect::<String>();
@@ -66,8 +70,8 @@ impl BlockItem {
     }
 }
 
-impl Declaration {
-    pub fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
+impl TreePrint for Declaration {
+    fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
         let indent = std::iter::repeat(INDENT)
             .take(indent_level)
             .collect::<String>();
@@ -81,8 +85,8 @@ impl Declaration {
     }
 }
 
-impl VariableDeclaration {
-    pub fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
+impl TreePrint for VariableDeclaration {
+    fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
         let indent = std::iter::repeat(INDENT)
             .take(indent_level)
             .collect::<String>();
@@ -98,8 +102,8 @@ impl VariableDeclaration {
     }
 }
 
-impl Statement {
-    pub fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
+impl TreePrint for Statement {
+    fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
         let indent = std::iter::repeat(INDENT)
             .take(indent_level)
             .collect::<String>();
@@ -177,8 +181,8 @@ impl Statement {
     }
 }
 
-impl Expression {
-    pub fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
+impl TreePrint for Expression {
+    fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
         let indent = std::iter::repeat(INDENT)
             .take(indent_level)
             .collect::<String>();
@@ -230,8 +234,8 @@ impl Expression {
     }
 }
 
-impl ForInit {
-    pub fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
+impl TreePrint for ForInit {
+    fn tree_print(&self, f: &mut fmt::Formatter, indent_level: usize) -> fmt::Result {
         let indent = std::iter::repeat(INDENT)
             .take(indent_level)
             .collect::<String>();

@@ -1,3 +1,4 @@
+use super::print::TreePrint;
 use crate::lexer::*;
 use std::fmt;
 use std::mem::discriminant;
