@@ -112,8 +112,14 @@ impl FunctionDeclaration {
             body,
         };
 
-        log::trace!("--- Parsed function declaration: {:?}", func);
+        log::trace!("--- Parsed function declaration:\n{}", func);
         Ok(func)
+    }
+}
+
+impl fmt::Display for FunctionDeclaration {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.tree_print(f, "")
     }
 }
 
@@ -138,6 +144,12 @@ impl Block {
     }
 }
 
+impl fmt::Display for Block {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.tree_print(f, "")
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub enum BlockItem {
@@ -159,6 +171,12 @@ impl BlockItem {
     }
 }
 
+impl fmt::Display for BlockItem {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.tree_print(f, "")
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Declaration {
     FunDecl(FunctionDeclaration),
@@ -173,6 +191,12 @@ impl Declaration {
         } else {
             Ok(Self::VarDecl(VariableDeclaration::parse(tokens)?))
         }
+    }
+}
+
+impl fmt::Display for Declaration {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.tree_print(f, "")
     }
 }
 
@@ -201,8 +225,14 @@ impl VariableDeclaration {
         expect_token(TokenKind::Semicolon, tokens)?;
 
         let result = Self { name: ident, init };
-        log::trace!("-- Parsed declaration: {:?}", result);
+        log::trace!("-- Parsed declaration:\n{}", result);
         Ok(result)
+    }
+}
+
+impl fmt::Display for VariableDeclaration {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.tree_print(f, "")
     }
 }
 
@@ -309,8 +339,14 @@ impl Statement {
             }
         };
 
-        log::trace!("-- Parsed statement: {:?}", result);
+        log::trace!("-- Parsed statement:\n{}", result);
         Ok(result)
+    }
+}
+
+impl fmt::Display for Statement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.tree_print(f, "")
     }
 }
 
@@ -334,6 +370,12 @@ impl ForInit {
             Self::InitNull
         };
         Ok(result)
+    }
+}
+
+impl fmt::Display for ForInit {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.tree_print(f, "")
     }
 }
 
@@ -381,7 +423,7 @@ impl Expression {
             }
             token = tokens.front().unwrap().to_owned();
         }
-        log::trace!("-- Parsed expression: {:?}", left);
+        log::trace!("-- Parsed expression:\n{}", left);
         Ok(left)
     }
 
@@ -450,6 +492,12 @@ impl Expression {
         } else {
             Ok(None)
         }
+    }
+}
+
+impl fmt::Display for Expression {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.tree_print(f, "")
     }
 }
 
