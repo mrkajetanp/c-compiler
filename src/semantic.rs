@@ -108,14 +108,7 @@ fn clone_identifier_map(map: &IdentifierMap) -> IdentifierMap {
 impl ast::Program {
     pub fn validate(self) -> SemanticResult<Self> {
         let mut ctx = SemanticCtx::new();
-        self.resolve(&mut ctx)
-            .inspect_err(|err| {
-                log::error!("Variable resolution error: {}", err);
-            })?
-            .label(&mut ctx)
-            .inspect_err(|err| {
-                log::error!("Loop labelling error: {}", err);
-            })
+        self.resolve(&mut ctx)?.label(&mut ctx)
     }
 
     pub fn resolve(self, ctx: &mut SemanticCtx) -> SemanticResult<Self> {
@@ -479,9 +472,7 @@ impl ast::Expression {
                         Box::new(right.resolve(ctx, identifiers)?),
                     )
                 } else {
-                    let lvalue = format!("{:?}", left);
-                    log::error!("Invalid assignment lvalue {}", lvalue);
-                    return Err(SemanticError::InvalidLvalue(lvalue));
+                    return Err(SemanticError::InvalidLvalue(format!("{:?}", left)));
                 }
             }
             Self::Conditional(cond, then_exp, else_exp) => Self::Conditional(

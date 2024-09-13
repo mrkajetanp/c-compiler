@@ -1,15 +1,16 @@
 #![feature(let_chains)]
 
+use error::ErrorKind;
 use lliw::Fg;
 use std::fs;
 use std::io::{Error, Write};
 use std::process::Command;
 use strum::EnumIs;
 use synoptic;
-use thiserror::Error;
 
 pub mod ast;
 pub mod codegen;
+pub mod error;
 pub mod ir;
 pub mod lexer;
 #[cfg(feature = "llvm")]
@@ -20,24 +21,6 @@ pub mod typecheck;
 use cfg_if::cfg_if;
 
 use lexer::TokenKind;
-
-#[derive(Error, Debug)]
-pub enum ErrorKind {
-    #[error("Lexer Failed")]
-    LexerError,
-    #[error("AST Parsing Failed")]
-    ParserError,
-    #[error("Semantic Analysis Failed")]
-    SemanticError,
-    #[error("Type Checking Failed")]
-    TypeCheckError,
-    #[error("Codegen Failed")]
-    CodegenError,
-    #[error("Asm Emission Failed")]
-    AsmEmitError,
-    #[error("IO Error")]
-    IOError,
-}
 
 type CompileResult<T> = Result<T, ErrorKind>;
 
@@ -72,23 +55,23 @@ impl Driver {
         log::debug!("Preprocessed source:");
         log::debug!("\n{}", source);
 
-        let tokens = self.lex(source).map_err(|_| ErrorKind::LexerError)?;
+        let tokens = self.lex(source)?;
         log::debug!("Tokens:\n{:?}\n", &tokens);
 
         if stage.is_lex() {
             return Ok(());
         }
 
-        let ast = self.parse(tokens).map_err(|_| ErrorKind::ParserError)?;
+        let ast = self.parse(tokens)?;
         log::debug!("Parsed AST:\n{}", ast);
 
         if stage.is_parse() {
             return Ok(());
         }
 
-        let ast = ast.validate().map_err(|_| ErrorKind::SemanticError)?;
+        let ast = ast.validate()?;
         log::trace!("Resolved and labelled AST:\n{}", ast);
-        let ast = ast.typecheck().map_err(|_| ErrorKind::TypeCheckError)?;
+        let ast = ast.typecheck()?;
         log::debug!("Validated AST:\n{}", ast);
 
         if stage.is_validate() {
@@ -163,21 +146,20 @@ impl Driver {
     }
 
     fn codegen(&self, ir: ir::Program) -> CompileResult<codegen::Program> {
-        codegen::Program::codegen(ir).map_err(|_| ErrorKind::CodegenError)
+        codegen::Program::codegen(ir).map_err(|err| ErrorKind::CodegenError(err))
     }
 
     fn emit(&self, code: codegen::Program) -> Result<String, ErrorKind> {
         let output_path = format!("{}.s", self.name);
-        let asm = code.emit().map_err(|_| ErrorKind::AsmEmitError)?;
+        let asm = code.emit()?;
 
         if log::log_enabled!(log::Level::Debug) {
             log::debug!("Emitted asm:");
             Driver::print_asm_with_highlight(&asm);
         }
 
-        let mut file = fs::File::create(&output_path).map_err(|_| ErrorKind::IOError)?;
-        file.write_all(asm.as_bytes())
-            .map_err(|_| ErrorKind::IOError)?;
+        let mut file = fs::File::create(&output_path)?;
+        file.write_all(asm.as_bytes())?;
 
         Ok(output_path)
     }

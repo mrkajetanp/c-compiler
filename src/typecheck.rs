@@ -57,18 +57,6 @@ impl TypeCheckCtx {
 
 impl Program {
     pub fn typecheck(self) -> TypeCheckResult<Self> {
-        let ast = match self._typecheck() {
-            Ok(ast) => Ok(ast),
-            Err(err) => {
-                log::error!("Type Checking Error: {}", err);
-                Err(err)
-            }
-        };
-
-        ast
-    }
-
-    fn _typecheck(self) -> TypeCheckResult<Self> {
         log::trace!("*** Running the type checker ***");
         let mut ctx = TypeCheckCtx::new();
 

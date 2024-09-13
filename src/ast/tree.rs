@@ -8,8 +8,10 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ParserError {
-    #[error("Unexpected token in the token stream")]
-    UnexpectedToken,
+    #[error("Syntax Error: Expected {0}, got {1}")]
+    FailedExpect(TokenKind, TokenKind),
+    #[error("Syntax Error: Unexpected token {0}")]
+    UnexpectedToken(TokenKind),
     #[error("No tokens left in the token stream")]
     NoTokens,
     #[error("Malformed expression")]
@@ -34,13 +36,8 @@ impl Program {
         let mut body = vec![];
 
         while !tokens.is_empty() {
-            match FunctionDeclaration::parse(&mut tokens) {
-                Ok(func) => body.push(func),
-                Err(err) => {
-                    log::error!("Parser error: {}", err);
-                    return Err(err);
-                }
-            }
+            let func = FunctionDeclaration::parse(&mut tokens);
+            body.push(func?);
         }
 
         Ok(Program { body })
@@ -209,11 +206,8 @@ pub struct VariableDeclaration {
 impl VariableDeclaration {
     fn parse(tokens: &mut VecDeque<TokenKind>) -> ParserResult<Self> {
         log_trace("Parsing declaration from", tokens);
-        // Silent expect here because we can use this failing to check
-        // whether we're parsing a declaration or something else
-        // so we don't want to log an error.
         // TODO: actually use the type
-        let _ty = expect_token_silent(TokenKind::Int, tokens)?;
+        let _ty = expect_token(TokenKind::Int, tokens)?;
         let ident = Identifier::parse(expect_token(TokenKind::Identifier("".to_owned()), tokens)?)?;
 
         let init = if tokens.front().unwrap().to_owned().is_semicolon() {
@@ -396,7 +390,6 @@ impl Expression {
         log_trace("Trying expr from", tokens);
 
         if tokens.len() == 0 {
-            log::error!("No tokens passed to the Expression parser");
             return Err(ParserError::NoTokens);
         }
         let mut left = Expression::parse_factor(tokens)?;
@@ -431,7 +424,6 @@ impl Expression {
         log_trace("Trying factor from", tokens);
 
         if tokens.len() == 0 {
-            log::error!("No tokens passed to the Expression parser");
             return Err(ParserError::NoTokens);
         }
         let token = tokens.front().unwrap().to_owned();
@@ -536,7 +528,7 @@ impl BinaryOperator {
             TokenKind::GreaterEqualThan => Ok(Self::GreaterEqualThan),
             TokenKind::LessThan => Ok(Self::LessThan),
             TokenKind::GreaterThan => Ok(Self::GreaterThan),
-            _ => Err(ParserError::UnexpectedToken),
+            _ => Err(ParserError::UnexpectedToken(token)),
         }
     }
 
@@ -564,7 +556,7 @@ impl UnaryOperator {
             TokenKind::Complement => Ok(Self::Complement),
             TokenKind::Minus => Ok(Self::Negation),
             TokenKind::Not => Ok(Self::Not),
-            _ => Err(ParserError::UnexpectedToken),
+            _ => Err(ParserError::UnexpectedToken(token)),
         }
     }
 }
@@ -607,31 +599,15 @@ fn log_trace(msg: &str, tokens: &mut VecDeque<TokenKind>) {
 }
 
 #[inline(always)]
-fn expect_token_silent(
-    expected: TokenKind,
-    tokens: &mut VecDeque<TokenKind>,
-) -> ParserResult<TokenKind> {
+fn expect_token(expected: TokenKind, tokens: &mut VecDeque<TokenKind>) -> ParserResult<TokenKind> {
     let exp = discriminant(&expected);
     let actual = discriminant(&tokens[0]);
 
     if actual != exp {
-        Err(ParserError::UnexpectedToken)
+        Err(ParserError::FailedExpect(expected, tokens[0].clone()))
     } else {
         Ok(tokens.pop_front().unwrap())
     }
-}
-
-#[inline(always)]
-fn expect_token(expected: TokenKind, tokens: &mut VecDeque<TokenKind>) -> ParserResult<TokenKind> {
-    let result = expect_token_silent(expected.clone(), tokens);
-    if let Err(_) = result {
-        log::error!(
-            "Syntax Error: Expected {:?}, got {:?}",
-            &expected,
-            &tokens[0]
-        );
-    }
-    result
 }
 
 #[cfg(test)]

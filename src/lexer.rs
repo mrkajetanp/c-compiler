@@ -1,4 +1,5 @@
 use core::panic;
+use std::fmt;
 
 use regex::Regex;
 use strum::IntoEnumIterator;
@@ -45,15 +46,15 @@ static COMMA_RE: &str = r"\,";
 
 #[derive(Error, Debug)]
 pub enum LexerError {
-    #[error("Syntax error")]
-    SyntaxError,
+    #[error("Syntax error: {0}\nAt source:\n{1}")]
+    SyntaxError(String, String),
 }
 
 pub type LexerResult<T> = Result<T, LexerError>;
 
 // NOTE: The tokenizer will try tokens in-order based on this list
 // It *must* be ordered longest-match first
-#[derive(EnumIter, EnumIs, Debug, strum_macros::Display, PartialEq, Clone)]
+#[derive(EnumIter, EnumIs, Debug, PartialEq, Clone)]
 pub enum TokenKind {
     Return,
     Int,
@@ -247,6 +248,12 @@ impl TokenKind {
     }
 }
 
+impl fmt::Display for TokenKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 struct Lexer<'a> {
     source: &'a str,
 }
@@ -278,7 +285,6 @@ impl<'a> Lexer<'a> {
 
             if !token_found {
                 log::debug!("Parsed tokens: {:?}", tokens);
-                log::error!("Could not parse token");
                 let error_source: String = self
                     .source
                     .to_owned()
@@ -286,8 +292,10 @@ impl<'a> Lexer<'a> {
                     .take(2)
                     .collect::<Vec<&str>>()
                     .join("\n");
-                log::error!("At source: \n{}", error_source);
-                return Err(LexerError::SyntaxError);
+                return Err(LexerError::SyntaxError(
+                    "Could not parse token".to_owned(),
+                    error_source,
+                ));
             }
         }
         Ok(tokens)
