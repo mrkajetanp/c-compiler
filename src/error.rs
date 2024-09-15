@@ -1,6 +1,6 @@
-use crate::ast::ParserError;
 use crate::codegen::CodegenError;
 use crate::lexer::LexerError;
+use crate::parser::ast::ParserError;
 use crate::semantic::SemanticError;
 use crate::typecheck::TypeCheckError;
 use thiserror::Error;

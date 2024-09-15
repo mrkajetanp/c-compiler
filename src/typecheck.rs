@@ -1,4 +1,4 @@
-use crate::ast::*;
+use crate::parser::ast::*;
 use std::collections::HashMap;
 use strum_macros::EnumIs;
 use thiserror::Error;

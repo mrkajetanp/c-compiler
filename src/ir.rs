@@ -2,7 +2,7 @@ use std::fmt;
 
 use strum::EnumIs;
 
-use crate::ast::{self, Statement};
+use crate::parser::ast;
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -162,13 +162,13 @@ impl Instruction {
 
     pub fn generate_from_statement(statement: ast::Statement, ctx: &mut IrCtx) -> Vec<Self> {
         match statement {
-            Statement::Return(expr) => {
+            ast::Statement::Return(expr) => {
                 let (mut instructions, val) = Self::generate_from_expr(expr, ctx);
                 instructions.push(Instruction::Return(val));
                 instructions
             }
-            Statement::Exp(expr) => Self::generate_from_expr(expr, ctx).0,
-            Statement::If(cond, then_stmt, else_statement) => {
+            ast::Statement::Exp(expr) => Self::generate_from_expr(expr, ctx).0,
+            ast::Statement::If(cond, then_stmt, else_statement) => {
                 let end_label = ctx.label("jump_end");
                 let (mut instructions, cond_val) = Self::generate_from_expr(cond, ctx);
 
@@ -187,20 +187,20 @@ impl Instruction {
                 }
                 instructions
             }
-            Statement::Compound(block) => Self::generate_from_block(block, ctx),
-            Statement::Break(label) => {
+            ast::Statement::Compound(block) => Self::generate_from_block(block, ctx),
+            ast::Statement::Break(label) => {
                 vec![Instruction::Jump(Identifier::new(&format!(
                     "break_{}",
                     label.unwrap()
                 )))]
             }
-            Statement::Continue(label) => {
+            ast::Statement::Continue(label) => {
                 vec![Instruction::Jump(Identifier::new(&format!(
                     "continue_{}",
                     label.unwrap()
                 )))]
             }
-            Statement::While(cond, body, label) => {
+            ast::Statement::While(cond, body, label) => {
                 let start_label = Identifier::new(&format!("continue_{}", label.as_ref().unwrap()));
                 let end_label = Identifier::new(&format!("break_{}", label.as_ref().unwrap()));
 
@@ -215,7 +215,7 @@ impl Instruction {
                 log::trace!("Emitting IR for while -> {:?}", instructions);
                 instructions
             }
-            Statement::DoWhile(body, cond, label) => {
+            ast::Statement::DoWhile(body, cond, label) => {
                 let start_label = Identifier::new(&format!("start_{}", label.as_ref().unwrap()));
                 let break_label = Identifier::new(&format!("break_{}", label.as_ref().unwrap()));
                 let continue_label =
@@ -232,7 +232,7 @@ impl Instruction {
                 log::trace!("Emitting IR for do-while -> {:?}", instructions);
                 instructions
             }
-            Statement::For(init, cond, post, body, label) => {
+            ast::Statement::For(init, cond, post, body, label) => {
                 let start_label = Identifier::new(&format!("start_{}", label.as_ref().unwrap()));
                 let continue_label =
                     Identifier::new(&format!("continue_{}", label.as_ref().unwrap()));
@@ -256,7 +256,7 @@ impl Instruction {
                 instructions.push(Instruction::Label(end_label));
                 instructions
             }
-            Statement::Null => vec![],
+            ast::Statement::Null => vec![],
             // _ => todo!(),
         }
     }

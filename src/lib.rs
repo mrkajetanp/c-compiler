@@ -8,17 +8,18 @@ use std::process::Command;
 use strum::EnumIs;
 use synoptic;
 
-pub mod ast;
 pub mod codegen;
 pub mod error;
 pub mod ir;
 pub mod lexer;
 #[cfg(feature = "llvm")]
 pub mod llvm_ir;
+pub mod parser;
 pub mod semantic;
 pub mod typecheck;
 
 use cfg_if::cfg_if;
+use parser::ast;
 
 use lexer::TokenKind;
 

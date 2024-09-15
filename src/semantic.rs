@@ -1,4 +1,4 @@
-use crate::ast::{self, *};
+use crate::parser::ast;
 use std::collections::HashMap;
 use strum_macros::EnumIs;
 use thiserror::Error;
@@ -119,7 +119,7 @@ impl ast::Program {
                 .body
                 .into_iter()
                 .map(|f| f.resolve(ctx, &mut identifiers))
-                .collect::<SemanticResult<Vec<FunctionDeclaration>>>()?,
+                .collect::<SemanticResult<Vec<ast::FunctionDeclaration>>>()?,
         })
     }
 
@@ -129,7 +129,7 @@ impl ast::Program {
                 .body
                 .into_iter()
                 .map(|f| f.label(ctx))
-                .collect::<SemanticResult<Vec<FunctionDeclaration>>>()?,
+                .collect::<SemanticResult<Vec<ast::FunctionDeclaration>>>()?,
         })
     }
 }
@@ -485,7 +485,7 @@ impl ast::Expression {
                     let args = args
                         .into_iter()
                         .map(|arg| arg.resolve(ctx, identifiers))
-                        .collect::<SemanticResult<Vec<Expression>>>()?;
+                        .collect::<SemanticResult<Vec<ast::Expression>>>()?;
                     Self::FunctionCall(ident, args)
                 } else {
                     return Err(SemanticError::UndeclaredFunction(name.to_string()));
