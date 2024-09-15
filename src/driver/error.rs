@@ -1,8 +1,8 @@
-use crate::codegen::CodegenError;
+use crate::codegen::x86_64::CodegenError;
 use crate::lexer::LexerError;
 use crate::parser::ast::ParserError;
-use crate::semantic::SemanticError;
-use crate::typecheck::TypeCheckError;
+use crate::semantic::resolution::SemanticError;
+use crate::semantic::typecheck::TypeCheckError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]

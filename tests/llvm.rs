@@ -1,6 +1,6 @@
 extern crate rcc;
 
-use rcc::*;
+use rcc::driver::*;
 use serial_test::serial;
 
 static BASIC_SAMPLE: &str = "samples/basic.c";

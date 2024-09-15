@@ -1,4 +1,4 @@
-use crate::ast;
+use crate::parser::ast;
 
 use llvm_sys::prelude::{LLVMBuilderRef, LLVMModuleRef, LLVMValueRef};
 use llvm_sys::LLVMValue;

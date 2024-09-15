@@ -1,7 +1,7 @@
 extern crate rcc;
 
+use rcc::driver::*;
 use rcc::lexer::TokenKind;
-use rcc::*;
 use serial_test::serial;
 use std::fs;
 

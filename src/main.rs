@@ -2,7 +2,7 @@ use clap::Parser;
 use log::LevelFilter;
 use std::process::ExitCode;
 
-use rcc::*;
+use rcc::driver::*;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
