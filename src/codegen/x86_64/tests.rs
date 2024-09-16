@@ -54,7 +54,7 @@ fn function() {
             Instruction::Mov(Operand::Reg(Register::AX), Operand::Stack(-12)),
             Instruction::Ret,
         ],
-        stack_pos: -16,
+        stack_size: 16,
     };
 
     assert_eq!(actual.unwrap(), expected);
@@ -63,7 +63,7 @@ fn function() {
 #[test]
 fn instruction_unary() {
     let mut stack_addrs: HashMap<String, i64> = HashMap::new();
-    let mut stack_pos: i64 = 0;
+    let mut stack_size = 0;
 
     let actual: Vec<Instruction> = Instruction::codegen(ir::Instruction::Unary(
         ir::UnaryOperator::Negation,
@@ -72,7 +72,7 @@ fn instruction_unary() {
     ))
     .unwrap()
     .into_iter()
-    .map(|instr| instr.replace_pseudo(&mut stack_pos, &mut stack_addrs))
+    .map(|instr| instr.replace_pseudo(&mut stack_size, &mut stack_addrs))
     .collect();
     let expected = vec![
         Instruction::Mov(Operand::Stack(-4), Operand::Immediate(5)),
@@ -118,17 +118,17 @@ fn operand_from_val() {
 #[test]
 fn operand_replace_psuedo() {
     let mut stack_addrs: HashMap<String, i64> = HashMap::new();
-    let mut stack_pos: i64 = 0;
+    let mut stack_size = 0;
     let operand =
-        Operand::Pseudo(Identifier::new("x")).replace_pseudo(&mut stack_pos, &mut stack_addrs);
+        Operand::Pseudo(Identifier::new("x")).replace_pseudo(&mut stack_size, &mut stack_addrs);
     let operand2 =
-        Operand::Pseudo(Identifier::new("x")).replace_pseudo(&mut stack_pos, &mut stack_addrs);
+        Operand::Pseudo(Identifier::new("x")).replace_pseudo(&mut stack_size, &mut stack_addrs);
     let operand3 =
-        Operand::Pseudo(Identifier::new("y")).replace_pseudo(&mut stack_pos, &mut stack_addrs);
+        Operand::Pseudo(Identifier::new("y")).replace_pseudo(&mut stack_size, &mut stack_addrs);
     assert_eq!(Operand::Stack(-4), operand);
     assert_eq!(Operand::Stack(-4), operand2);
     assert_eq!(Operand::Stack(-8), operand3);
-    assert_eq!(-8, stack_pos);
+    assert_eq!(8, stack_size);
     assert_eq!(2, stack_addrs.len());
 }
 
@@ -141,7 +141,7 @@ mod emit {
             body: vec![Function {
                 name: Identifier::new("main"),
                 instructions: vec![Instruction::AllocateStack(16), Instruction::Ret],
-                stack_pos: -4,
+                stack_size: 4,
             }],
         }
         .emit();
@@ -162,7 +162,7 @@ mod emit {
         let actual = Function {
             name: Identifier::new("main"),
             instructions: vec![Instruction::AllocateStack(4), Instruction::Ret],
-            stack_pos: -4,
+            stack_size: 4,
         }
         .emit();
 

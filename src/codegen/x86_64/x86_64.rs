@@ -16,6 +16,7 @@ pub enum CodegenError {
 }
 
 type CodegenResult<T> = Result<T, CodegenError>;
+type StackAddrMap = HashMap<String, i64>;
 
 #[derive(Debug, PartialEq)]
 #[allow(dead_code)]
@@ -65,7 +66,7 @@ impl fmt::Display for Program {
 pub struct Function {
     pub name: Identifier,
     pub instructions: Vec<Instruction>,
-    pub stack_pos: i64,
+    pub stack_size: usize,
 }
 
 impl Function {
@@ -125,7 +126,7 @@ impl Function {
         let result = Self {
             name: Identifier::codegen(function.name),
             instructions,
-            stack_pos: -(prologue_stack_size as i64),
+            stack_size: prologue_stack_size,
         }
         .replace_pseudo()
         .fixup();
@@ -134,12 +135,12 @@ impl Function {
     }
 
     fn replace_pseudo(mut self) -> Self {
-        let mut stack_addrs: HashMap<String, i64> = HashMap::new();
+        let mut stack_addrs: StackAddrMap = HashMap::new();
 
         self.instructions = self
             .instructions
             .into_iter()
-            .map(|instr| instr.replace_pseudo(&mut self.stack_pos, &mut stack_addrs))
+            .map(|instr| instr.replace_pseudo(&mut self.stack_size, &mut stack_addrs))
             .collect();
 
         self
@@ -147,10 +148,9 @@ impl Function {
 
     fn fixup(mut self) -> Self {
         // Round up to nearest multiple of 16 to align for calls
-        // TODO: this whole mess with negative i64/usize stack pos needs to end
-        self.stack_pos = -(((-self.stack_pos + 15) / 16) * 16);
+        self.stack_size = ((self.stack_size + 15) / 16) * 16;
         self.instructions
-            .insert(0, Instruction::AllocateStack(-self.stack_pos));
+            .insert(0, Instruction::AllocateStack(self.stack_size));
 
         self.instructions = self
             .instructions
@@ -198,8 +198,8 @@ pub enum Instruction {
     JmpCC(CondCode, Identifier),
     SetCC(CondCode, Operand),
     Label(Identifier),
-    AllocateStack(i64),
-    DeallocateStack(i64),
+    AllocateStack(usize),
+    DeallocateStack(usize),
     Push(Operand),
     Call(Identifier),
     Ret,
@@ -334,9 +334,9 @@ impl Instruction {
 
                 // Adjust SP
                 instructions.push(Instruction::Call(Identifier::codegen(name)));
-                let stack_bytes = 8 * stack_args.len() as i64 + stack_padding;
+                let stack_bytes = 8 * stack_args.len() + stack_padding;
                 if stack_bytes != 0 {
-                    instructions.push(Instruction::DeallocateStack(stack_bytes as i64));
+                    instructions.push(Instruction::DeallocateStack(stack_bytes));
                 }
 
                 // Get return value
@@ -350,41 +350,37 @@ impl Instruction {
         Ok(instructions)
     }
 
-    pub fn replace_pseudo(
-        self,
-        stack_pos: &mut i64,
-        stack_addrs: &mut HashMap<String, i64>,
-    ) -> Self {
+    pub fn replace_pseudo(self, stack_size: &mut usize, stack_addrs: &mut StackAddrMap) -> Self {
         match self {
             Instruction::Mov(dst, src) => {
-                let src = src.replace_pseudo(stack_pos, stack_addrs);
-                let dst = dst.replace_pseudo(stack_pos, stack_addrs);
+                let src = src.replace_pseudo(stack_size, stack_addrs);
+                let dst = dst.replace_pseudo(stack_size, stack_addrs);
                 Instruction::Mov(dst, src)
             }
             Instruction::Unary(op, dst) => {
-                let dst = dst.replace_pseudo(stack_pos, stack_addrs);
+                let dst = dst.replace_pseudo(stack_size, stack_addrs);
                 Instruction::Unary(op, dst)
             }
             Instruction::Binary(op, dst, src) => {
-                let src = src.replace_pseudo(stack_pos, stack_addrs);
-                let dst = dst.replace_pseudo(stack_pos, stack_addrs);
+                let src = src.replace_pseudo(stack_size, stack_addrs);
+                let dst = dst.replace_pseudo(stack_size, stack_addrs);
                 Instruction::Binary(op, dst, src)
             }
             Instruction::Idiv(src) => {
-                let src = src.replace_pseudo(stack_pos, stack_addrs);
+                let src = src.replace_pseudo(stack_size, stack_addrs);
                 Instruction::Idiv(src)
             }
             Instruction::SetCC(cc, dst) => {
-                let dst = dst.replace_pseudo(stack_pos, stack_addrs);
+                let dst = dst.replace_pseudo(stack_size, stack_addrs);
                 Instruction::SetCC(cc, dst)
             }
             Instruction::Cmp(op1, op2) => {
-                let op1 = op1.replace_pseudo(stack_pos, stack_addrs);
-                let op2 = op2.replace_pseudo(stack_pos, stack_addrs);
+                let op1 = op1.replace_pseudo(stack_size, stack_addrs);
+                let op2 = op2.replace_pseudo(stack_size, stack_addrs);
                 Instruction::Cmp(op1, op2)
             }
             Instruction::Push(operand) => {
-                Instruction::Push(operand.replace_pseudo(stack_pos, stack_addrs))
+                Instruction::Push(operand.replace_pseudo(stack_size, stack_addrs))
             }
             Instruction::Ret
             | Instruction::Cdq
@@ -567,14 +563,15 @@ impl Operand {
         }
     }
 
-    fn pseudo_to_stack(&self, stack_pos: &mut i64, stack_addrs: &mut HashMap<String, i64>) -> Self {
+    fn pseudo_to_stack(&self, stack_size: &mut usize, stack_addrs: &mut StackAddrMap) -> Self {
         if let Operand::Pseudo(name) = self {
             let addr = if let Some(addr) = stack_addrs.get(&name.to_string()) {
                 *addr
             } else {
-                *stack_pos -= 4;
-                stack_addrs.insert(name.to_string(), *stack_pos);
-                *stack_pos
+                *stack_size += 4;
+                let new_stack_offset = -(*stack_size as i64);
+                stack_addrs.insert(name.to_string(), new_stack_offset);
+                new_stack_offset
             };
             Operand::Stack(addr)
         } else {
@@ -582,13 +579,9 @@ impl Operand {
         }
     }
 
-    pub fn replace_pseudo(
-        self,
-        stack_pos: &mut i64,
-        stack_addrs: &mut HashMap<String, i64>,
-    ) -> Self {
+    pub fn replace_pseudo(self, stack_size: &mut usize, stack_addrs: &mut StackAddrMap) -> Self {
         if self.is_pseudo() {
-            self.pseudo_to_stack(stack_pos, stack_addrs)
+            self.pseudo_to_stack(stack_size, stack_addrs)
         } else {
             self
         }
