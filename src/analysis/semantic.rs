@@ -29,7 +29,6 @@ pub enum SemanticError {
 }
 
 type SemanticResult<T> = Result<T, SemanticError>;
-type IdentifierMap = HashMap<String, IdentifierMapEntry>;
 
 pub struct SemanticCtx {
     unique_var_id: u64,
@@ -46,30 +45,29 @@ impl SemanticCtx {
         ast::Identifier::new(format!("{}.{}", ident, id).as_str())
     }
 
-    // TODO: some refactoring here
     pub fn get_unique_ident(
         &self,
         ident: &ast::Identifier,
         variables: &mut IdentifierMap,
     ) -> SemanticResult<ast::Identifier> {
-        if let Some(unique_ident_entry) = variables.get(&ident.to_string()) {
-            Ok(ast::Identifier::new(&unique_ident_entry.name))
-        } else {
-            Err(SemanticError::UndeclaredVariable(ident.to_string()))
-        }
+        variables
+            .get(&ident)
+            .map(|unique_ident_entry| ast::Identifier::new(&unique_ident_entry.name.to_string()))
+            .ok_or(SemanticError::UndeclaredVariable(ident.to_string()))
     }
 }
 
+type IdentifierMap = HashMap<ast::Identifier, IdentifierMapEntry>;
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct IdentifierMapEntry {
-    // TODO: change to ast::Identifier
-    name: String,
+    name: ast::Identifier,
     from_current_scope: bool,
     linkage: LinkageKind,
 }
 
 impl IdentifierMapEntry {
-    pub fn new(name: String, linkage: LinkageKind) -> Self {
+    pub fn new(name: ast::Identifier, linkage: LinkageKind) -> Self {
         Self {
             name,
             from_current_scope: true,
@@ -78,7 +76,7 @@ impl IdentifierMapEntry {
     }
 
     /// Helper for creating new entries with no linkage
-    pub fn new_variable(name: String) -> Self {
+    pub fn new_variable(name: ast::Identifier) -> Self {
         Self {
             name,
             from_current_scope: true,
@@ -140,16 +138,16 @@ impl ast::FunctionDeclaration {
         ctx: &mut SemanticCtx,
         identifiers: &mut IdentifierMap,
     ) -> SemanticResult<Self> {
-        if let Some(entry) = identifiers.get(&self.name.to_string()) {
+        if let Some(entry) = identifiers.get(&self.name) {
             if entry.from_current_scope && entry.linkage.is_none() {
                 return Err(SemanticError::DuplicateDeclaration(self.name.to_string()));
             }
         }
 
         identifiers.insert(
-            self.name.to_string(),
+            self.name.clone(),
             IdentifierMapEntry {
-                name: self.name.to_string(),
+                name: self.name.clone(),
                 from_current_scope: true,
                 linkage: LinkageKind::External,
             },
@@ -163,7 +161,7 @@ impl ast::FunctionDeclaration {
                 .params
                 .into_iter()
                 .map(|p| {
-                    let existing = inner_identifiers.get(&p.to_string());
+                    let existing = inner_identifiers.get(&p);
 
                     if let Some(entry) = existing
                         && entry.from_current_scope
@@ -173,10 +171,7 @@ impl ast::FunctionDeclaration {
 
                     let param = ctx.make_unique_ident(&p);
 
-                    inner_identifiers.insert(
-                        p.to_string(),
-                        IdentifierMapEntry::new_variable(param.to_string()),
-                    );
+                    inner_identifiers.insert(p, IdentifierMapEntry::new_variable(param.clone()));
 
                     Ok(param)
                 })
@@ -293,7 +288,7 @@ impl ast::VariableDeclaration {
         ctx: &mut SemanticCtx,
         identifiers: &mut IdentifierMap,
     ) -> SemanticResult<Self> {
-        let existing = identifiers.get(&self.name.to_string());
+        let existing = identifiers.get(&self.name);
 
         if let Some(entry) = existing
             && entry.from_current_scope
@@ -303,10 +298,7 @@ impl ast::VariableDeclaration {
 
         let name = ctx.make_unique_ident(&self.name);
 
-        identifiers.insert(
-            self.name.to_string(),
-            IdentifierMapEntry::new_variable(name.to_string()),
-        );
+        identifiers.insert(self.name, IdentifierMapEntry::new_variable(name.clone()));
 
         let init = if let Some(exp) = self.init {
             Some(exp.resolve(ctx, identifiers)?)
