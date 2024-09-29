@@ -8,6 +8,7 @@ samples/*
 .vim/
 .zed/
 .helix/
+.dir-locals.el
 
 /target
 *.i
